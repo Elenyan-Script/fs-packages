@@ -19,6 +19,8 @@ import CheckboxGroup from '../../src/components/CheckboxGroup.vue';
 import Combobox from '../../src/components/Combobox.vue';
 import Disclosure from '../../src/components/Disclosure.vue';
 import FormField from '../../src/components/FormField.vue';
+import GroupCombobox from '../../src/components/GroupCombobox.vue';
+import GroupSelect from '../../src/components/GroupSelect.vue';
 import MultiCombobox from '../../src/components/MultiCombobox.vue';
 import MultiSelect from '../../src/components/MultiSelect.vue';
 import Pressable from '../../src/components/Pressable.vue';
@@ -34,6 +36,11 @@ const FRUITS: Fruit[] = [
     {id: 1, name: 'Watermelon'},
     {id: 2, name: 'Apricot'},
     {id: 3, name: 'Mango'},
+];
+
+const FRUIT_GROUPS: {options: Fruit[]; text: string}[] = [
+    {text: 'Tropical', options: [{id: 1, name: 'Watermelon'}, {id: 2, name: 'Mango'}]},
+    {text: 'Stone', options: [{id: 3, name: 'Apricot'}]},
 ];
 
 type FieldSlot = {controlId: string; errorId: string; required: boolean; invalid: boolean; describedby?: string};
@@ -63,6 +70,16 @@ const noop = () => undefined;
 // Shared select-control prop bag (id/aria wiring threaded from the field slot).
 const selectProps = (slot: FieldSlot) => ({
     options: FRUITS,
+    label: 'name',
+    id: slot.controlId,
+    required: slot.required,
+    invalid: slot.invalid,
+    describedby: slot.describedby,
+});
+
+// Shared grouped-select prop bag.
+const groupSelectProps = (slot: FieldSlot) => ({
+    groups: FRUIT_GROUPS,
     label: 'name',
     id: slot.controlId,
     required: slot.required,
@@ -180,6 +197,56 @@ describe('axe-core audits — zero violations, closed and open', () => {
         await userEvent.click(document.getElementById('fruit') as HTMLElement);
         await userEvent.keyboard('a{ArrowDown}');
         expect(document.querySelector('.ui-multicombobox__menu')).not.toBeNull();
+        await expectNoViolations(screen.container);
+    });
+
+    // WR-0587 group DOM shape: role="group" rows interleaved with role="option" rows inside
+    // role="listbox" (+ the <ul role="presentation"> wrapper). audits aria-required-children
+    // and aria-required-owned which happy-dom specs cannot catch.
+    it('FormField + GroupSelect, closed and open (grouped listbox — role="group" + role="option" shape)', async () => {
+        const model = ref<number | null>(null);
+        const screen = renderInField((slot) =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
+            h(GroupSelect as any, {...groupSelectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
+        );
+        await expectNoViolations(screen.container);
+
+        await userEvent.click(document.getElementById('fruit') as HTMLElement);
+        expect(document.querySelector('.ui-groupselect__menu')).not.toBeNull();
+        await userEvent.keyboard('{ArrowDown}');
+        await expectNoViolations(screen.container);
+    });
+
+    // The clear entry is a role="option" <li> rendered ABOVE the groups in the listbox — a DOM
+    // shape no other audited component uses. Audits that it is a valid listbox child.
+    it('FormField + GroupSelect, open with a clear entry (committing clear role="option" above groups)', async () => {
+        const model = ref<number | null>(2);
+        const screen = renderInField((slot) =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
+            h(GroupSelect as any, {
+                ...groupSelectProps(slot),
+                modelValue: model.value,
+                'onUpdate:modelValue': noop,
+                clearLabel: 'Clear selection',
+            }),
+        );
+
+        await userEvent.click(document.getElementById('fruit') as HTMLElement);
+        expect(document.querySelector('.ui-groupselect__clear')).not.toBeNull();
+        await expectNoViolations(screen.container);
+    });
+
+    it('FormField + GroupCombobox, closed and open with a typed filter (filtered grouped listbox)', async () => {
+        const model = ref<number | null>(null);
+        const screen = renderInField((slot) =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
+            h(GroupCombobox as any, {...groupSelectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
+        );
+        await expectNoViolations(screen.container);
+
+        await userEvent.click(document.getElementById('fruit') as HTMLElement);
+        await userEvent.keyboard('ma{ArrowDown}');
+        expect(document.querySelector('.ui-groupcombobox__menu')).not.toBeNull();
         await expectNoViolations(screen.container);
     });
 

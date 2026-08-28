@@ -566,8 +566,8 @@
     padding: 0;
     margin: 0;
 }
-.ui-groupselect__group ul,
-.ui-groupcombobox__group ul {
+.ui-groupselect__group > ul,
+.ui-groupcombobox__group > ul {
     list-style: none;
     padding: 0;
     margin: 0;
