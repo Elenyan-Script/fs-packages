@@ -288,6 +288,31 @@ describe('GroupSelect', () => {
         document.body.dispatchEvent(new MouseEvent('click', {bubbles: true}));
     });
 
+    it('skips a group with no options — no header row, no option rows for it', async () => {
+        const wrapper = mountGroupSelect({
+            groups: [
+                {options: [], text: 'Empty'},
+                {options: [{id: 1, name: 'Mango'}], text: 'Tropical'},
+            ],
+        });
+        await wrapper.find('button').trigger('click');
+
+        expect(
+            groupMenu(wrapper)
+                .findAll('.ui-groupselect__group-header')
+                .map((h) => h.text()),
+        ).toEqual(['Tropical']);
+        expect(groupMenu(wrapper).findAll('.ui-groupselect__option')).toHaveLength(1);
+    });
+
+    it('hovering the clear entry highlights it (aria-activedescendant points at clear id)', async () => {
+        const wrapper = mountGroupSelect({clearLabel: 'None', modelValue: 1});
+        await wrapper.find('button').trigger('click');
+
+        await groupMenu(wrapper).find('.ui-groupselect__clear').trigger('mouseover');
+        expect(wrapper.find('button').attributes('aria-activedescendant')).toBe('fruit-clear');
+    });
+
     it('resolves the display string via a getter label function', () => {
         const wrapper = mountGroupSelect({label: (o: Fruit) => `${o.name}!`, modelValue: 1});
         expect(wrapper.find('.ui-groupselect__value').text()).toBe('Mango!');

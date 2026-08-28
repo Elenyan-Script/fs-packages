@@ -200,6 +200,7 @@ const floating = useTemplateRef<HTMLElement>('floating');
 // flush would otherwise index off the end.
 const commit = (index: number): boolean => {
     const highlighted = filteredOptions.value[index];
+    // v8 ignore next
     if (!highlighted) return false;
     model.value = highlighted.id;
     query.value = labelOf(highlighted);

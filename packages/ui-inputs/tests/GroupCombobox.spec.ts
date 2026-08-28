@@ -292,6 +292,14 @@ describe('GroupCombobox', () => {
         expect(groupMenu(wrapper).findAll('.ui-groupcombobox__option')).toHaveLength(0);
     });
 
+    it('hovering an option moves the pointer to it (aria-activedescendant updates)', async () => {
+        const wrapper = mountGroupCombobox({});
+        await wrapper.find('input').trigger('click');
+
+        await groupMenu(wrapper).findAll('.ui-groupcombobox__option')[1].trigger('mouseover'); // Kiwi (index 1)
+        expect(wrapper.find('input').attributes('aria-activedescendant')).toBe('fruit-opt-1');
+    });
+
     it('exposes an imperative focus() handle that moves DOM focus to the input', () => {
         const wrapper = mountGroupCombobox({});
         const inputEl = wrapper.find('input').element;
@@ -299,6 +307,39 @@ describe('GroupCombobox', () => {
 
         (wrapper.vm as unknown as {focus: () => void}).focus();
         expect(document.activeElement).toBe(inputEl);
+    });
+
+    it('resolves the display string via a getter label function', () => {
+        const wrapper = mountGroupCombobox({label: (o: Fruit) => `${o.name}!`, modelValue: 1});
+        expect(wrapper.find('input').element.value).toBe('Mango!');
+    });
+
+    it('omits the header row for a group with header=false but still renders its options', async () => {
+        const wrapper = mountGroupCombobox({
+            groups: [
+                {options: [{id: 1, name: 'Mango'}], text: 'Tropical', header: false},
+                {options: [{id: 2, name: 'Apricot'}], text: 'Stone'},
+            ],
+        });
+        await wrapper.find('input').trigger('click');
+
+        expect(
+            groupMenu(wrapper)
+                .findAll('.ui-groupcombobox__group-header')
+                .map((h) => h.text()),
+        ).toEqual(['Stone']);
+        expect(groupMenu(wrapper).findAll('.ui-groupcombobox__option')).toHaveLength(2);
+    });
+
+    it('renders mutedOptions with .is-muted and keeps them committable', async () => {
+        const wrapper = mountGroupCombobox({mutedOptions: [2]}); // Kiwi
+        await wrapper.find('input').trigger('click');
+
+        const options = groupMenu(wrapper).findAll('.ui-groupcombobox__option');
+        expect(options.map((o) => o.classes().includes('is-muted'))).toEqual([false, true, false, false]);
+
+        await options[1].trigger('click'); // Kiwi commits anyway
+        expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([2]);
     });
 
     it('renders per-option custom content through the #option scoped slot', async () => {
