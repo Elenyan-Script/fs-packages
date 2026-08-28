@@ -13,6 +13,8 @@ export {default as SingleSelect} from './components/SingleSelect.vue';
 export {default as Combobox} from './components/Combobox.vue';
 export {default as MultiSelect} from './components/MultiSelect.vue';
 export {default as MultiCombobox} from './components/MultiCombobox.vue';
+export {default as GroupSelect} from './components/GroupSelect.vue';
+export {default as GroupCombobox} from './components/GroupCombobox.vue';
 
 // Interactive controls that are NOT form inputs: they carry no value and belong to no field.
 // Both exist to make a keyboard-reachable control the path of least resistance — the class of

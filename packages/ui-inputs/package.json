@@ -1,6 +1,6 @@
 {
     "name": "@script-development/ui-inputs",
-    "version": "0.12.0",
+    "version": "0.13.0",
     "description": "Headless, themeable Vue 3 UI components — form inputs (field, label, error, text/number/date input, textarea, select, checkbox/radio/switch) plus keyboard-correct interactive controls (pressable, disclosure) — styled entirely through --ui-* CSS custom properties.",
     "homepage": "https://packages.script.nl/packages/ui-inputs",
     "license": "MIT",
