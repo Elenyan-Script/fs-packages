@@ -96,6 +96,16 @@
        destructive-ish "commit null"); renders only when a consumer passes the prop. */
     --ui-clear-text: var(--ui-danger-text);
 
+    /* group header (GroupSelect / GroupCombobox) — the non-navigable label above each
+       option run. Defaults derive from existing tokens so a territory's --ui-* map themes
+       them for free; override individually to break from the muted-label treatment. */
+    --ui-group-header-pad: var(--ui-option-pad);
+    --ui-group-header-color: var(--ui-control-text-muted);
+    --ui-group-header-size: 0.75em;
+    --ui-group-header-weight: 600;
+    --ui-group-header-transform: uppercase;
+    --ui-group-header-tracking: 0.05em;
+
     /* chip (MultiSelect) — every default derives from an existing resting token, so the
        chip contract is neutral until a territory opts in. */
     --ui-chip-bg: var(--ui-option-bg-active);
@@ -256,7 +266,9 @@
 .ui-select,
 .ui-combobox,
 .ui-multiselect,
-.ui-multicombobox {
+.ui-multicombobox,
+.ui-groupselect,
+.ui-groupcombobox {
     position: relative;
 }
 .ui-select__trigger {
@@ -277,6 +289,28 @@
     transition: transform 0.12s ease;
 }
 .ui-select__trigger.is-open .ui-select__chevron {
+    transform: rotate(180deg);
+}
+
+/* GroupSelect trigger — button-triggered, same layout as SingleSelect. */
+.ui-groupselect__trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    text-align: left;
+    cursor: pointer;
+}
+.ui-groupselect__placeholder {
+    color: var(--ui-control-text-muted);
+}
+.ui-groupselect__chevron {
+    width: 1.1em;
+    height: 1.1em;
+    flex: none;
+    transition: transform 0.12s ease;
+}
+.ui-groupselect__trigger.is-open .ui-groupselect__chevron {
     transform: rotate(180deg);
 }
 
@@ -437,7 +471,9 @@
 .ui-select__menu,
 .ui-combobox__menu,
 .ui-multiselect__menu,
-.ui-multicombobox__menu {
+.ui-multicombobox__menu,
+.ui-groupselect__menu,
+.ui-groupcombobox__menu {
     list-style: none;
     margin: 0.25rem 0 0;
     padding: var(--ui-menu-pad);
@@ -457,7 +493,9 @@
 .ui-select__option,
 .ui-combobox__option,
 .ui-multiselect__option,
-.ui-multicombobox__option {
+.ui-multicombobox__option,
+.ui-groupselect__option,
+.ui-groupcombobox__option {
     padding: var(--ui-option-pad);
     border-radius: var(--ui-option-radius);
     cursor: pointer;
@@ -478,19 +516,25 @@
 .ui-select__option.is-muted,
 .ui-combobox__option.is-muted,
 .ui-multiselect__option.is-muted,
-.ui-multicombobox__option.is-muted {
+.ui-multicombobox__option.is-muted,
+.ui-groupselect__option.is-muted,
+.ui-groupcombobox__option.is-muted {
     color: var(--ui-option-text-muted);
 }
 .ui-select__option.is-active,
 .ui-combobox__option.is-active,
 .ui-multiselect__option.is-active,
-.ui-multicombobox__option.is-active {
+.ui-multicombobox__option.is-active,
+.ui-groupselect__option.is-active,
+.ui-groupcombobox__option.is-active {
     background: var(--ui-option-bg-active);
 }
 /* The committing clear entry — an option-shaped row above the list (outside the index
    space), danger-toned by default; shares the option's active-highlight treatment. */
 .ui-select__clear,
-.ui-combobox__clear {
+.ui-combobox__clear,
+.ui-groupselect__clear,
+.ui-groupcombobox__clear {
     padding: var(--ui-option-pad);
     border-radius: var(--ui-option-radius);
     cursor: pointer;
@@ -499,15 +543,46 @@
     color: var(--ui-clear-text);
 }
 .ui-select__clear.is-active,
-.ui-combobox__clear.is-active {
+.ui-combobox__clear.is-active,
+.ui-groupselect__clear.is-active,
+.ui-groupcombobox__clear.is-active {
     background: var(--ui-option-bg-active);
 }
 .ui-select__empty,
 .ui-combobox__empty,
 .ui-multiselect__empty,
-.ui-multicombobox__empty {
+.ui-multicombobox__empty,
+.ui-groupselect__empty,
+.ui-groupcombobox__empty {
     padding: var(--ui-option-pad);
     color: var(--ui-control-text-muted);
+}
+
+/* GroupSelect / GroupCombobox — group container (<li role="group">) and inner presentation
+   list reset their default list chrome so options sit flush with the rest of the menu. */
+.ui-groupselect__group,
+.ui-groupcombobox__group {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.ui-groupselect__group ul,
+.ui-groupcombobox__group ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+/* The visual group label — hidden from AT via aria-hidden="true"; the group name is
+   announced through role="group" + aria-label on the parent <li>. */
+.ui-groupselect__group-header,
+.ui-groupcombobox__group-header {
+    display: block;
+    padding: var(--ui-group-header-pad);
+    color: var(--ui-group-header-color);
+    font-size: var(--ui-group-header-size);
+    font-weight: var(--ui-group-header-weight);
+    text-transform: var(--ui-group-header-transform);
+    letter-spacing: var(--ui-group-header-tracking);
 }
 
 /* Checkbox / Switch / radio rows — the <label> element is the row (implicit labelling, the
@@ -821,6 +896,7 @@
 @media (prefers-reduced-motion: reduce) {
     .ui-control,
     .ui-select__chevron,
+    .ui-groupselect__chevron,
     .ui-multiselect__chevron,
     .ui-check__input,
     .ui-check__mark,

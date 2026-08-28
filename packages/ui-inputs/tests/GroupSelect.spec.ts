@@ -58,8 +58,14 @@ describe('GroupSelect', () => {
         const m = groupMenu(wrapper);
         expect(m.exists()).toBe(true);
 
+        // APG listbox grouping: group names are conveyed via role="group" + aria-label on the
+        // group <li>; the visual header span is aria-hidden to avoid double-reading.
+        const groups = m.findAll('.ui-groupselect__group');
+        expect(groups.map((g) => g.attributes('role'))).toEqual(['group', 'group']);
+        expect(groups.map((g) => g.attributes('aria-label'))).toEqual(['Tropical', 'Stone']);
+
         const headers = m.findAll('.ui-groupselect__group-header');
-        expect(headers.map((h) => h.attributes('role'))).toEqual(['presentation', 'presentation']);
+        expect(headers.map((h) => h.attributes('aria-hidden'))).toEqual(['true', 'true']);
 
         const options = m.findAll('.ui-groupselect__option');
         expect(options.every((o) => o.attributes('role') === 'option')).toBe(true);
@@ -71,11 +77,11 @@ describe('GroupSelect', () => {
 
         const m = groupMenu(wrapper);
         const items = m.findAll('li');
-        // Tropical header, Mango, Kiwi, Stone header, Apricot, Lime
-        expect(items[0].classes()).toContain('ui-groupselect__group-header');
+        // Tropical group-li, Mango, Kiwi, Stone group-li, Apricot, Lime
+        expect(items[0].classes()).toContain('ui-groupselect__group');
         expect(items[1].classes()).toContain('ui-groupselect__option');
         expect(items[2].classes()).toContain('ui-groupselect__option');
-        expect(items[3].classes()).toContain('ui-groupselect__group-header');
+        expect(items[3].classes()).toContain('ui-groupselect__group');
         expect(items[4].classes()).toContain('ui-groupselect__option');
         expect(items[5].classes()).toContain('ui-groupselect__option');
     });

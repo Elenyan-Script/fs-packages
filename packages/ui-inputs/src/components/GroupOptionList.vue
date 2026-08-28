@@ -18,23 +18,41 @@
              listbox child that satisfies role="listbox"'s required owned role="option", while
              aria-disabled marks it non-selectable. -->
         <li v-if="!hasOptions" :class="`${variant}__empty`" role="option" aria-disabled="true">{{ emptyText }}</li>
-        <template v-for="row in rows" :key="row.type === 'header' ? `h:${row.text}` : `o:${row.index}`">
-            <!-- role="presentation": group headers are visual separators, not navigable options.
-                 They carry no id, so aria-activedescendant never points at them. -->
-            <li v-if="row.type === 'header'" :class="`${variant}__group-header`" role="presentation">{{ row.text }}</li>
-            <li
-                v-else
-                :id="optionId(row.index)"
-                :class="[`${variant}__option`, {'is-active': pointer === row.index, 'is-muted': isMuted(row.index)}]"
-                role="option"
-                :aria-selected="isSelected(row.index)"
-                @mouseover="emit('hover', row.index)"
-                @click="emit('commit', row.index)"
-            >
-                <!-- Index-scoped so `T` never crosses this boundary: the parent re-scopes the
-                     index into its typed payload and owns the slotless fallback. -->
-                <slot name="option" :index="row.index" />
+        <!-- APG listbox grouping pattern: named groups use role="group" + aria-label so the group
+             name is announced to AT; the visual header span is aria-hidden to avoid double-reading.
+             Options without a header (header:false groups) render flat — no group wrapper. -->
+        <template v-for="(run, ri) in groupedRuns" :key="ri">
+            <li v-if="run.header !== null" :class="`${variant}__group`" role="group" :aria-label="run.header">
+                <span :class="`${variant}__group-header`" aria-hidden="true">{{ run.header }}</span>
+                <ul role="presentation">
+                    <li
+                        v-for="index in run.indices"
+                        :key="index"
+                        :id="optionId(index)"
+                        :class="[`${variant}__option`, {'is-active': pointer === index, 'is-muted': isMuted(index)}]"
+                        role="option"
+                        :aria-selected="isSelected(index)"
+                        @mouseover="emit('hover', index)"
+                        @click="emit('commit', index)"
+                    >
+                        <slot name="option" :index="index" />
+                    </li>
+                </ul>
             </li>
+            <template v-else>
+                <li
+                    v-for="index in run.indices"
+                    :key="index"
+                    :id="optionId(index)"
+                    :class="[`${variant}__option`, {'is-active': pointer === index, 'is-muted': isMuted(index)}]"
+                    role="option"
+                    :aria-selected="isSelected(index)"
+                    @mouseover="emit('hover', index)"
+                    @click="emit('commit', index)"
+                >
+                    <slot name="option" :index="index" />
+                </li>
+            </template>
         </template>
     </ul>
 </template>
@@ -89,6 +107,25 @@ const {
 
 const emit = defineEmits<{hover: [index: number]; commit: [index: number]; clearHover: []; clearCommit: []}>();
 
-// Reactive: rows changes when the filter changes in GroupCombobox, so this must recompute.
 const hasOptions = computed(() => rows.some((row) => row.type === 'option'));
+
+// Converts the flat GroupRow[] into runs keyed by header. Named runs use role="group"; runs
+// without a header (from `header:false` groups) render options flat in the listbox.
+const groupedRuns = computed(() => {
+    const runs: {header: string | null; indices: number[]}[] = [];
+    let current: {header: string | null; indices: number[]} | null = null;
+    for (const row of rows) {
+        if (row.type === 'header') {
+            current = {header: row.text, indices: []};
+            runs.push(current);
+        } else {
+            if (!current) {
+                current = {header: null, indices: []};
+                runs.push(current);
+            }
+            current.indices.push(row.index);
+        }
+    }
+    return runs;
+});
 </script>
