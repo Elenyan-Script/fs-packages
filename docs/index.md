@@ -73,6 +73,14 @@ Headless, themeable Vue components (the `ui-*` family) — behaviour and accessi
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [ui-inputs](/packages/ui-inputs) | Headless UI components — field/label/error, text/number/date/textarea, checkbox/switch/radio, select/combobox/multi-select, plus the valueless controls `Pressable` / `Disclosure` — themed via `--ui-*` variables |
 
+### Integrations
+
+Packages integrating a third-party platform. Runtime differs per package — `fs-cloudflare` runs in your server process (Express SSR/API), not the browser.
+
+| Package                               | Description                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| [fs-cloudflare](/packages/cloudflare) | Express middleware gating inbound traffic to Cloudflare's egress ranges |
+
 ## Quality Guarantees
 
 Every package passes an 8-gate CI pipeline before it can be published:

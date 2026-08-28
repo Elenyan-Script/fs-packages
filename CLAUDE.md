@@ -44,7 +44,7 @@ Consumer territories must apply per-call timeouts at instantiation OR rely on th
 
 **Precedent + residue.** The prior consumer-side obligation ("every consumer MUST wrap its own middleware bodies") is **superseded** by the default guard. kendo WR-0078 (PR [#1538](https://github.com/script-development/kendo/pull/1538), 2026-06-15) and the WR-0290 fleet wave hand-wrapped consumer middleware under the old contract; those explicit `guarded()`/try-catch wraps (and fs-form's own `guarded()`) become **redundant-but-harmless double-wraps** (inner catches, outer auto-guard never fires) — strip in a later, unhurried cleanup, not a blocker. See the war-room `deferred.md [adr] fs-packages-fs-http-async-aware-middleware-rejection-doctrine` entry and ADR-0037.
 
-## Packages (13)
+## Packages (14)
 
 `fs-*` are frontend **service** packages; `ui-*` (new family, ADR-0043) are headless, themeable Vue **UI components**.
 
@@ -53,6 +53,7 @@ Consumer territories must apply per-call timeouts at instantiation OR rely on th
 | fs-http                 | No  | HTTP service factory with middleware architecture                                                                |
 | fs-storage              | No  | localStorage service factory with prefix namespacing                                                             |
 | fs-helpers              | No  | Tree-shakeable utilities: deep copy, type guards, case conversion                                                |
+| fs-cloudflare           | No  | Express-compatible middleware 403ing any request whose client IP is outside Cloudflare's vendored egress ranges (`src/ranges.ts`, refreshed by `scripts/update-cf-ranges.mjs`, drift-checked weekly by `cf-ranges-drift.yml`). Duck-typed req/res — zero deps, no Express peer |
 | fs-theme                | Yes | Reactive dark/light mode with storage persistence                                                                |
 | fs-loading              | Yes | Loading state service with HTTP middleware                                                                       |
 | fs-adapter-store        | Yes | Reactive adapter-store pattern with CRUD resource adapters                                                       |

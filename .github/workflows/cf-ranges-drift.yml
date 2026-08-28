@@ -1,0 +1,31 @@
+name: CF ranges drift
+
+# fs-cloudflare vendors Cloudflare's egress ranges (packages/cloudflare/src/ranges.ts) so the
+# gate stays network-free at runtime and its test suite stays deterministic. Drift is therefore
+# a scheduled check against the live endpoints, never a PR gate — a PR must not fail because
+# Cloudflare announced a range that morning. A red run here means: refresh + release.
+on:
+    schedule:
+        - cron: '17 6 * * 1'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    ranges:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+              with:
+                  node-version: 24
+            # Zero-dep (node stdlib + global fetch), so no install step is needed.
+            - run: node scripts/update-cf-ranges.mjs
+            - name: Fail on drift
+              run: |
+                  if ! git diff --quiet -- packages/cloudflare/src/ranges.ts; then
+                      git diff -- packages/cloudflare/src/ranges.ts
+                      echo "::error::Cloudflare egress ranges drifted. Run 'node scripts/update-cf-ranges.mjs', commit packages/cloudflare/src/ranges.ts, and release @script-development/fs-cloudflare so consumers pick the change up."
+                      exit 1
+                  fi

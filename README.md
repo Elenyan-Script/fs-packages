@@ -31,6 +31,12 @@ Shared frontend service packages by [Script Development](https://github.com/scri
 | [@script-development/fs-adapter-store](https://www.npmjs.com/package/@script-development/fs-adapter-store) | Reactive state management with CRUD resource adapters         |
 | [@script-development/fs-router](https://www.npmjs.com/package/@script-development/fs-router)               | Type-safe router with CRUD navigation and middleware pipeline |
 
+### Integrations
+
+| Package                                                                                              | Description                                                             |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [@script-development/fs-cloudflare](https://www.npmjs.com/package/@script-development/fs-cloudflare) | Express middleware gating inbound traffic to Cloudflare's egress ranges |
+
 ## Quick Start
 
 ```bash

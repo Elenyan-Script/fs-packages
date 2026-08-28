@@ -53,6 +53,11 @@ export default defineConfig({
                     ],
                 },
                 {text: 'UI Components', collapsed: false, items: [{text: 'ui-inputs', link: '/packages/ui-inputs'}]},
+                {
+                    text: 'Integrations',
+                    collapsed: false,
+                    items: [{text: 'fs-cloudflare', link: '/packages/cloudflare'}],
+                },
             ],
         },
 

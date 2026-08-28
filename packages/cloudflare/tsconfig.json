@@ -1,0 +1,7 @@
+{
+    "extends": "../../tsconfig.base.json",
+    // `types` is the one option forked beyond outDir/rootDir/include: TypeScript 6 no longer
+    // auto-includes @types/*, and this is the only package importing node builtins (node:net).
+    "compilerOptions": {"outDir": "dist", "rootDir": "src", "types": ["node"]},
+    "include": ["src"]
+}

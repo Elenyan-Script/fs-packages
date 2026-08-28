@@ -13,6 +13,7 @@ const PACKAGE_THRESHOLDS = Object.fromEntries(
     [
         'adapter-store',
         'cached-adapter-store',
+        'cloudflare',
         'dialog',
         'form',
         'helpers',
