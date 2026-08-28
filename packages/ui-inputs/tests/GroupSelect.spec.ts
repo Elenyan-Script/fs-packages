@@ -50,7 +50,7 @@ describe('GroupSelect', () => {
         expect(groupMenu(wrapper).exists()).toBe(false);
     });
 
-    it('opens on click and renders group headers with role="presentation" and options with role="option"', async () => {
+    it('opens on click and renders group headers with role="group" + aria-label and options with role="option"', async () => {
         const wrapper = mountGroupSelect({});
         await wrapper.find('button').trigger('click');
 
@@ -58,11 +58,14 @@ describe('GroupSelect', () => {
         const m = groupMenu(wrapper);
         expect(m.exists()).toBe(true);
 
-        // APG listbox grouping: group names are conveyed via role="group" + aria-label on the
-        // group <li>; the visual header span is aria-hidden to avoid double-reading.
-        const groups = m.findAll('.ui-groupselect__group');
-        expect(groups.map((g) => g.attributes('role'))).toEqual(['group', 'group']);
-        expect(groups.map((g) => g.attributes('aria-label'))).toEqual(['Tropical', 'Stone']);
+        // APG listbox grouping: role="group" + aria-label live on the inner <ul> so the group
+        // name is announced to AT; the wrapper <li> carries role="presentation" (html-aria
+        // disallows role="group" on <li>). The visual header span is aria-hidden.
+        const groupWrappers = m.findAll('.ui-groupselect__group');
+        expect(groupWrappers.map((g) => g.attributes('role'))).toEqual(['presentation', 'presentation']);
+        const groupUls = groupWrappers.map((g) => g.find('ul'));
+        expect(groupUls.map((ul) => ul.attributes('role'))).toEqual(['group', 'group']);
+        expect(groupUls.map((ul) => ul.attributes('aria-label'))).toEqual(['Tropical', 'Stone']);
 
         const headers = m.findAll('.ui-groupselect__group-header');
         expect(headers.map((h) => h.attributes('aria-hidden'))).toEqual(['true', 'true']);

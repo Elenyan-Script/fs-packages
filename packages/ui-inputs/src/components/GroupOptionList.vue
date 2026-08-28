@@ -18,13 +18,15 @@
              listbox child that satisfies role="listbox"'s required owned role="option", while
              aria-disabled marks it non-selectable. -->
         <li v-if="!hasOptions" :class="`${variant}__empty`" role="option" aria-disabled="true">{{ emptyText }}</li>
-        <!-- APG listbox grouping pattern: named groups use role="group" + aria-label so the group
-             name is announced to AT; the visual header span is aria-hidden to avoid double-reading.
+        <!-- APG listbox grouping pattern: named groups use role="group" + aria-label on the
+             inner <ul> so the group name is announced to AT; the <li> wrapper carries
+             role="presentation" (html-aria disallows role="group" on <li>). The visual
+             header span is aria-hidden to avoid double-reading.
              Options without a header (header:false groups) render flat — no group wrapper. -->
         <template v-for="(run, ri) in groupedRuns" :key="ri">
-            <li v-if="run.header !== null" :class="`${variant}__group`" role="group" :aria-label="run.header">
+            <li v-if="run.header !== null" :class="`${variant}__group`" role="presentation">
                 <span :class="`${variant}__group-header`" aria-hidden="true">{{ run.header }}</span>
-                <ul role="presentation">
+                <ul role="group" :aria-label="run.header">
                     <li
                         v-for="index in run.indices"
                         :key="index"
