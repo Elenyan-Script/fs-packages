@@ -39,7 +39,13 @@ const FRUITS: Fruit[] = [
 ];
 
 const FRUIT_GROUPS: {options: Fruit[]; text: string}[] = [
-    {text: 'Tropical', options: [{id: 1, name: 'Watermelon'}, {id: 2, name: 'Mango'}]},
+    {
+        text: 'Tropical',
+        options: [
+            {id: 1, name: 'Watermelon'},
+            {id: 2, name: 'Mango'},
+        ],
+    },
     {text: 'Stone', options: [{id: 3, name: 'Apricot'}]},
 ];
 
