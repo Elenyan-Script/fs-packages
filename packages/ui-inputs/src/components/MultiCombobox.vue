@@ -79,7 +79,7 @@
             <OptionList
                 variant="ui-multicombobox"
                 multiselectable
-                :labels="optionLabels"
+                :rows="rows"
                 :keys="optionKeys"
                 :pointer="pointer"
                 :listbox-id="listboxId"
@@ -112,6 +112,7 @@
 <script setup lang="ts" generic="T extends SelectItem">
 import {computed, ref, useTemplateRef} from 'vue';
 
+import type {GroupRow} from '../internal/group-rows';
 import type {LabelKey, SelectItem} from '../types';
 
 import {useListbox} from '../composables/useListbox';
@@ -210,6 +211,9 @@ const describedbyWithSelection = computed(() =>
 // stays the single list every index (pointer, commit, aria) is keyed against.
 const optionLabels = computed(() => filtered.value.map(labelOf));
 const optionKeys = computed(() => filtered.value.map((option) => String(option.id)));
+// A flat control renders one headerless run — an all-option row sequence OptionList lays out
+// flat (no group wrappers), the same component the grouped controls feed a header/option mix.
+const rows = computed<GroupRow[]>(() => filtered.value.map((_, index) => ({type: 'option', index})));
 /** `aria-selected` marks committed MEMBERSHIP — the pointer is conveyed by aria-activedescendant. */
 const isSelected = (index: number): boolean => model.value.includes(filtered.value[index].id);
 /** `.is-muted` marks visual de-emphasis only — a muted option stays committable. */

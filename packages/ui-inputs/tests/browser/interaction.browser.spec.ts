@@ -14,6 +14,8 @@ import {defineComponent, h, ref} from 'vue';
 import Checkbox from '../../src/components/Checkbox.vue';
 import Combobox from '../../src/components/Combobox.vue';
 import Disclosure from '../../src/components/Disclosure.vue';
+import GroupCombobox from '../../src/components/GroupCombobox.vue';
+import GroupSelect from '../../src/components/GroupSelect.vue';
 import MultiCombobox from '../../src/components/MultiCombobox.vue';
 import MultiSelect from '../../src/components/MultiSelect.vue';
 import Pressable from '../../src/components/Pressable.vue';
@@ -31,6 +33,19 @@ const FRUITS: Fruit[] = [
     {id: 3, name: 'Mango'},
 ];
 // Sorted render order: Apricot(2), Mango(3), Watermelon(1).
+
+// Grouped controls are CALLER-ordered (no alphabetical sort), so the flat option index runs
+// through the groups in declaration order: Watermelon(0), Mango(1), Apricot(2).
+const FRUIT_GROUPS: {options: Fruit[]; text: string}[] = [
+    {
+        text: 'Tropical',
+        options: [
+            {id: 1, name: 'Watermelon'},
+            {id: 3, name: 'Mango'},
+        ],
+    },
+    {text: 'Stone', options: [{id: 2, name: 'Apricot'}]},
+];
 
 const cleanupTargets: Element[] = [];
 afterEach(() => {
@@ -65,6 +80,32 @@ const renderControlled = <V>(component: any, initial: V, props: Record<string, u
 const menu = () =>
     document.querySelector('.ui-select__menu, .ui-combobox__menu, .ui-multiselect__menu, .ui-multicombobox__menu');
 const optionAt = (index: number): HTMLElement => document.querySelectorAll<HTMLElement>('[role="option"]')[index];
+
+/** The grouped-control equivalent of `renderControlled` — feeds `groups`, not `options`. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
+const renderControlledGroups = <V>(component: any, initial: V, props: Record<string, unknown> = {}) => {
+    const model = ref(initial);
+    render(
+        defineComponent(
+            () => () =>
+                h(component, {
+                    groups: FRUIT_GROUPS,
+                    label: 'name',
+                    id: 'fruit',
+                    ...props,
+                    modelValue: model.value,
+                    'onUpdate:modelValue': (value: V) => {
+                        model.value = value;
+                    },
+                }),
+        ),
+    );
+    return model;
+};
+
+const groupMenu = () => document.querySelector('.ui-groupselect__menu, .ui-groupcombobox__menu');
+const groupHeaders = (variant: 'groupselect' | 'groupcombobox'): string[] =>
+    [...document.querySelectorAll(`.ui-${variant}__group-header`)].map((h) => h.textContent?.trim() ?? '');
 
 describe('SingleSelect — real keyboard walk', () => {
     it('Tab focuses, Enter opens, ArrowDown navigates, Enter commits, menu closes', async () => {
@@ -304,6 +345,68 @@ describe('MultiCombobox — input-as-trigger, real focus choreography', () => {
         await userEvent.click(input);
         await userEvent.keyboard('{Backspace}');
         expect(model.value).toEqual([2]);
+    });
+});
+
+describe('GroupSelect — real keyboard walk across grouped options', () => {
+    it('Enter opens, group headers render, ArrowDown skips headers, Enter commits the flat index', async () => {
+        const model = renderControlledGroups<number | null>(GroupSelect, null);
+        const trigger = document.getElementById('fruit') as HTMLButtonElement;
+
+        await userEvent.tab();
+        expect(document.activeElement).toBe(trigger);
+        expect(groupMenu()).toBeNull();
+
+        await userEvent.keyboard('{Enter}');
+        expect(groupMenu()).not.toBeNull();
+        // Both group headers render, in caller order, above their options.
+        expect(groupHeaders('groupselect')).toEqual(['Tropical', 'Stone']);
+
+        // The keyboard walk rides the FLAT index and never lands on a header: Watermelon(0),
+        // Mango(1) — the second option, which lives under the same first group.
+        await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+        expect(trigger.getAttribute('aria-activedescendant')).toBe('fruit-opt-1');
+
+        await userEvent.keyboard('{Enter}');
+        expect(model.value).toBe(3); // Mango
+        expect(groupMenu()).toBeNull();
+        expect(trigger.textContent).toContain('Mango');
+    });
+
+    it('a real click commits an option from the SECOND group and closes', async () => {
+        const model = renderControlledGroups<number | null>(GroupSelect, null);
+
+        await userEvent.click(document.getElementById('fruit') as HTMLElement);
+        expect(groupMenu()).not.toBeNull();
+
+        await userEvent.click(optionAt(2)); // Apricot — the lone Stone-group option
+        expect(model.value).toBe(2);
+        expect(groupMenu()).toBeNull();
+    });
+});
+
+describe('GroupCombobox — real typing filters within groups and commits', () => {
+    it('typing narrows within groups, empties a group header, ArrowDown highlights, Enter commits', async () => {
+        const model = renderControlledGroups<number | null>(GroupCombobox, null);
+        const input = document.getElementById('fruit') as HTMLInputElement;
+
+        await userEvent.click(input);
+        expect(groupMenu()).not.toBeNull();
+        expect(document.querySelectorAll('[role="option"]')).toHaveLength(3);
+        expect(groupHeaders('groupcombobox')).toEqual(['Tropical', 'Stone']);
+
+        await userEvent.keyboard('ma'); // only Mango contains 'ma'
+        expect([...document.querySelectorAll('[role="option"]')].map((o) => o.textContent?.trim())).toEqual(['Mango']);
+        // Stone drained to nothing — its header is gone, never left dangling above no options.
+        expect(groupHeaders('groupcombobox')).toEqual(['Tropical']);
+
+        await userEvent.keyboard('{ArrowDown}');
+        expect(input.getAttribute('aria-activedescendant')).toBe('fruit-opt-0');
+
+        await userEvent.keyboard('{Enter}');
+        expect(model.value).toBe(3); // Mango
+        expect(input.value).toBe('Mango');
+        expect(groupMenu()).toBeNull();
     });
 });
 

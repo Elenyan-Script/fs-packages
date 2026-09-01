@@ -37,9 +37,10 @@
              positions the ANCHOR, not the <ul>: the size() middleware sizes it to the
              trigger, so the menu's `min-width: 100%` measures the trigger. -->
         <div v-if="open" ref="floating" popover="manual" class="ui-menu-anchor" :style="floatingStyles">
-            <GroupOptionList
+            <OptionList
                 variant="ui-groupselect"
                 :rows="rows"
+                :keys="optionKeys"
                 :pointer="pointer"
                 :listbox-id="listboxId"
                 :option-id="optionId"
@@ -56,8 +57,8 @@
                 @clear-hover="highlightClear"
                 @clear-commit="commitClear"
             >
-                <!-- Re-scope GroupOptionList's index into the typed per-option payload; the
-                     fallback (the plain labelOf text) keeps slotless consumers byte-identical. -->
+                <!-- Re-scope OptionList's index into the typed per-option payload; the fallback
+                     (the plain labelOf text) keeps slotless consumers byte-identical. -->
                 <template #option="{index}">
                     <slot
                         name="option"
@@ -69,7 +70,7 @@
                         {{ labelOf(flatOptions[index]) }}
                     </slot>
                 </template>
-            </GroupOptionList>
+            </OptionList>
         </div>
     </div>
 </template>
@@ -81,7 +82,7 @@ import type {GroupRow} from '../internal/group-rows';
 import type {LabelKey, SelectItem} from '../types';
 
 import {useListbox} from '../composables/useListbox';
-import GroupOptionList from './GroupOptionList.vue';
+import OptionList from './OptionList.vue';
 
 const {
     groups,
@@ -141,6 +142,8 @@ const labelOf = (option: T): string =>
 // commit/isSelected/isMuted operate on. Groups are caller-ordered; no alphabeticalSort.
 const flatOptions = computed(() => groups.flatMap((g) => g.options));
 const selected = computed(() => flatOptions.value.find((option) => option.id === model.value));
+// Stable `v-for` keys for OptionList, indexed by the flat option index `rows` navigates.
+const optionKeys = computed(() => flatOptions.value.map((option) => String(option.id)));
 
 // Build the mixed header/option row sequence. Groups with no options get no header row —
 // an empty group whose header renders would confuse users and violate the constraint.
@@ -159,7 +162,7 @@ const rows = computed(() => {
     return result;
 });
 
-/** `aria-selected` marks the COMMITTED value — GroupOptionList only asks about rendered indices. */
+/** `aria-selected` marks the COMMITTED value — OptionList only asks about rendered indices. */
 const isSelected = (index: number): boolean => flatOptions.value[index].id === model.value;
 /** `.is-muted` marks visual de-emphasis only — a muted option stays committable. */
 const isMuted = (index: number): boolean =>
@@ -170,7 +173,7 @@ const reference = useTemplateRef<HTMLElement>('reference');
 // The teleported `.ui-menu-anchor` (null while closed) — floating-ui's floating element.
 const floating = useTemplateRef<HTMLElement>('floating');
 
-// Both keyboard (Enter via useListbox) and pointer (GroupOptionList `commit`) funnel through
+// Both keyboard (Enter via useListbox) and pointer (OptionList `commit`) funnel through
 // this one guard. Read through a local rather than indexing blind: the clamp watcher normally
 // keeps `pointer` in range, but a keypress landing between an `groups` change and the watcher
 // flush would otherwise index off the end.

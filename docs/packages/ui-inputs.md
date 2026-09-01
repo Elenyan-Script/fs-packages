@@ -110,6 +110,52 @@ Models an **array of option ids**. Committing an option toggles its membership a
 </FormField>
 ```
 
+### GroupSelect & GroupCombobox
+
+When options arrive **already partitioned** — active sprints above the backlog, tropical fruit above stone fruit — `GroupSelect` and `GroupCombobox` are `SingleSelect` / `Combobox` over **`groups`** instead of `options`. Each group renders a `role="group"` header; a single `v-model` selects across the whole set, and groups stay in **caller order** (there is no `alphabeticalSort` — the partition _is_ the order). `GroupCombobox` filters within groups and drops any group its filter empties. Try typing `a` in the searchable one:
+
+<ClientOnly>
+<div class="ui-demo">
+<FormField id="demo-group-fruit" label="Fruit" #default="{controlId, describedby, invalid}">
+<GroupSelect :id="controlId" v-model="groupFruit" :groups="fruitGroups" label="name" :invalid="invalid" :describedby="describedby" />
+</FormField>
+<p class="ui-demo__state">Model value: <code>{{ groupFruit === null ? 'null' : JSON.stringify(groupFruit) }}</code></p>
+<FormField id="demo-group-fruit-search" label="Fruit (searchable)" #default="{controlId, describedby, invalid}">
+<GroupCombobox :id="controlId" v-model="groupFruitSearch" :groups="fruitGroups" label="name" :invalid="invalid" :describedby="describedby" />
+</FormField>
+<p class="ui-demo__state">Model value: <code>{{ groupFruitSearch === null ? 'null' : JSON.stringify(groupFruitSearch) }}</code></p>
+</div>
+</ClientOnly>
+
+```vue
+<FormField id="fruit" label="Fruit" #default="{controlId, describedby, invalid}">
+    <GroupSelect :id="controlId" v-model="fruit" :groups="fruitGroups" label="name" :invalid="invalid" :describedby="describedby" />
+</FormField>
+```
+
+The `groups` prop replaces `options` — each group carries its own `options`, a header `text`, and an optional `header` flag:
+
+```ts
+const fruitGroups = [
+    {
+        text: 'Tropical',
+        options: [
+            {id: 'mango', name: 'Mango'},
+            {id: 'kiwi', name: 'Kiwi'},
+        ],
+    },
+    {
+        text: 'Stone',
+        options: [
+            {id: 'apricot', name: 'Apricot'},
+            {id: 'peach', name: 'Peach'},
+        ],
+    },
+];
+```
+
+Pass `header: false` on a group to render its options **flat** (a leading "ungrouped" run above the named groups); an empty group renders nothing, so a header never outlives its options.
+
 ### The checkbox family
 
 `Checkbox`, `Switch`, `CheckboxGroup`, and `RadioGroup` sit on a **native input chassis** — a real `<input type="checkbox">` / `<input type="radio">` restyled through the same `--ui-*` contract, never a div-with-role — so keyboard and assistive-tech behaviour come from the platform. The radio group's arrow-key selection below is the **browser's own** roving focus; the component hand-rolls none of it.
@@ -199,6 +245,8 @@ Models an **array of option ids**. Committing an option toggles its membership a
 | `Combobox`                | Accessible searchable/filtering single-select; exposes an imperative `focus()` handle                                                      |
 | `MultiSelect`             | Accessible multi-value select — models an array of option ids; toggle-in-place listbox, inline chip bar with per-chip remove               |
 | `MultiCombobox`           | Accessible **searchable** multi-value select — MultiSelect's model + chips with Combobox's filtering input as the trigger                  |
+| `GroupSelect`             | Accessible **grouped** single-select — `SingleSelect` over caller-ordered `groups` with `role="group"` headers; models `T['id'] \| null`   |
+| `GroupCombobox`           | Accessible **searchable grouped** single-select — `GroupSelect`'s listbox with `Combobox`'s filtering input; exposes `focus()`             |
 | `Pressable`               | A real `<button>` for a control that carries **no value** — replaces `<span @click>` / `<div @click>`; optional `aria-pressed` toggle mode |
 | `Disclosure`              | Show/hide a region from a real button (`aria-expanded` + `aria-controls`), optionally wrapped in a real heading — replaces `<h2 @click>`   |
 
@@ -303,6 +351,22 @@ danger-toned by default (`--ui-clear-text`, chaining to `--ui-danger-text`).
     empty-display-value="No sprint (backlog)"
 />
 ```
+
+#### Grouped variants (`GroupSelect` / `GroupCombobox`)
+
+`GroupSelect` and `GroupCombobox` are the grouped single-selects. They share the family's
+contract — `label`, `id`, `placeholder`, `disabled`, `required`, `invalid`, `describedby`,
+`emptyText`, `optionsLabel`, `mutedOptions`, `clearLabel`, the `#option` slot, and (on
+`GroupCombobox`) the imperative `focus()` handle — with **`options` replaced by `groups`** and
+no `alphabeticalSort` (the partition is the order):
+
+```ts
+groups: {options: T[]; text: string; header?: boolean}[];
+```
+
+- Groups render in caller order; a single `T['id'] | null` model selects across the flattened option set.
+- A named group renders `text` as a `role="group"` header labelling its options; `header: false` renders the group's options flat (with a boundary so they never fold into the preceding group) — a leading ungrouped run.
+- An empty group renders nothing — a header never outlives its options, including when `GroupCombobox`'s filter drains a group.
 
 ### The checkbox family
 
@@ -609,7 +673,7 @@ No file or range atoms; no date _picker_ (`DateInput` wraps the native control);
 <script setup lang="ts">
 import {computed, ref} from 'vue';
 
-import {Checkbox, CheckboxGroup, Combobox, Disclosure, FormField, MultiCombobox, MultiSelect, Pressable, RadioGroup, SingleSelect, Switch, TextInput} from '../../packages/ui-inputs/src/index';
+import {Checkbox, CheckboxGroup, Combobox, Disclosure, FormField, GroupCombobox, GroupSelect, MultiCombobox, MultiSelect, Pressable, RadioGroup, SingleSelect, Switch, TextInput} from '../../packages/ui-inputs/src/index';
 
 import '../../packages/ui-inputs/styles.css';
 
@@ -652,6 +716,13 @@ const fruit = ref<string | null>(null);
 const city = ref<string | null>(null);
 const toppingIds = ref<string[]>([]);
 const tagIds = ref<string[]>([]);
+
+const fruitGroups = [
+    {text: 'Tropical', options: [{id: 'mango', name: 'Mango'}, {id: 'kiwi', name: 'Kiwi'}, {id: 'papaya', name: 'Papaya'}]},
+    {text: 'Stone', options: [{id: 'apricot', name: 'Apricot'}, {id: 'peach', name: 'Peach'}, {id: 'plum', name: 'Plum'}]},
+];
+const groupFruit = ref<string | null>(null);
+const groupFruitSearch = ref<string | null>(null);
 
 const accepted = ref(false);
 const notifications = ref(true);
@@ -698,15 +769,25 @@ const themeToppingIds = ref<string[]>(['caramel', 'sprinkles']);
    package's single-class menu selectors (0,1,0), re-adding list markers, indent, and
    inter-item margins inside the demos — something no real consumer sees. Restore the
    package's own menu layout at winning specificity. Chips are spans; the only <ul>s
-   in the demos are the listbox menus. */
+   in the demos are the listbox menus (and the grouped listbox's nested role="group"
+   sub-lists). */
 .vp-doc .ui-demo ul[role='listbox'],
-.vp-doc .demo-theme-panel ul[role='listbox'] {
+.vp-doc .ui-demo ul[role='group'],
+.vp-doc .demo-theme-panel ul[role='listbox'],
+.vp-doc .demo-theme-panel ul[role='group'] {
     list-style: none;
     margin: 0.25rem 0 0;
     padding: var(--ui-menu-pad);
 }
+.vp-doc .ui-demo ul[role='group'],
+.vp-doc .demo-theme-panel ul[role='group'] {
+    margin: 0;
+    padding: 0;
+}
 .vp-doc .ui-demo ul[role='listbox'] li + li,
-.vp-doc .demo-theme-panel ul[role='listbox'] li + li {
+.vp-doc .ui-demo ul[role='group'] li + li,
+.vp-doc .demo-theme-panel ul[role='listbox'] li + li,
+.vp-doc .demo-theme-panel ul[role='group'] li + li {
     margin-top: 0;
 }
 

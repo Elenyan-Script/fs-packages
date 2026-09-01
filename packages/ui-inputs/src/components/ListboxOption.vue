@@ -14,10 +14,10 @@
 <script setup lang="ts">
 /**
  * ONE selectable listbox option `<li>` — INTERNAL, not barrel-exported. This is the single
- * source of the option-row markup shared by `OptionList` (flat) and `GroupOptionList`
- * (grouped + headerless runs): the `role="option"` / position-keyed `id` / committed-value
+ * source of the option-row markup `OptionList` renders in every listbox body — flat runs and
+ * grouped/headerless runs alike: the `role="option"` / position-keyed `id` / committed-value
  * `aria-selected` / `is-active`+`is-muted` chrome / `hover`+`commit` wiring all live HERE, so
- * an a11y or markup fix to an option lands once instead of in every listbox body.
+ * an a11y or markup fix to an option lands once instead of per run kind.
  *
  * Index-based like `useListbox` and its listbox parents: the option type `T` never crosses
  * this boundary. The owner passes the index plus the same index-keyed lookups it feeds the

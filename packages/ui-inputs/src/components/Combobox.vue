@@ -38,7 +38,7 @@
         <div v-if="open" ref="floating" popover="manual" class="ui-menu-anchor" :style="floatingStyles">
             <OptionList
                 variant="ui-combobox"
-                :labels="optionLabels"
+                :rows="rows"
                 :keys="optionKeys"
                 :pointer="pointer"
                 :listbox-id="listboxId"
@@ -77,6 +77,7 @@
 <script setup lang="ts" generic="T extends SelectItem">
 import {computed, ref, useTemplateRef, watch} from 'vue';
 
+import type {GroupRow} from '../internal/group-rows';
 import type {LabelKey, SelectItem} from '../types';
 
 import {useListbox} from '../composables/useListbox';
@@ -175,6 +176,9 @@ const filtered = computed(() => {
 // stays the single list every index (pointer, commit, aria) is keyed against.
 const optionLabels = computed(() => filtered.value.map(labelOf));
 const optionKeys = computed(() => filtered.value.map((option) => String(option.id)));
+// A flat control renders one headerless run — an all-option row sequence OptionList lays out
+// flat (no group wrappers), the same component the grouped controls feed a header/option mix.
+const rows = computed<GroupRow[]>(() => filtered.value.map((_, index) => ({type: 'option', index})));
 /** `aria-selected` marks the COMMITTED value — OptionList only asks about rendered indices. */
 const isSelected = (index: number): boolean => filtered.value[index].id === model.value;
 /** `.is-muted` marks visual de-emphasis only — a muted option stays committable. */

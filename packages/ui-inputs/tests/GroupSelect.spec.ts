@@ -233,7 +233,7 @@ describe('GroupSelect', () => {
         await wrapper.find('button').trigger('click');
 
         // The header=false group renders its options flat (no group wrapper), through
-        // GroupOptionList's v-else headerless-run branch — hover then click land on that branch.
+        // OptionList's v-else headerless-run branch — hover then click land on that branch.
         const options = groupMenu(wrapper).findAll('.ui-groupselect__option');
         await options[1].trigger('mouseover'); // hover Kiwi (index 1)
         expect(wrapper.find('button').attributes('aria-activedescendant')).toBe('fruit-opt-1');

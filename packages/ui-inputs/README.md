@@ -35,6 +35,8 @@ import '@script-development/ui-inputs/style.css';
 | `Combobox`                | Accessible **searchable/filtering** single-select — a text input that filters the listbox as you type; exposes an imperative `focus()` handle                                       |
 | `MultiSelect`             | Accessible **multi-value** select — models an array of option ids; toggle-in-place listbox that stays open on commit, inline chip bar with per-chip remove                          |
 | `MultiCombobox`           | Accessible **searchable multi-value** select — MultiSelect's array model + chips with Combobox's filter-as-you-type input as the trigger                                            |
+| `GroupSelect`             | Accessible **grouped** single-select — `SingleSelect` over caller-ordered `groups` with `role="group"` headers; models `T['id'] \| null`                                            |
+| `GroupCombobox`           | Accessible **searchable grouped** single-select — `GroupSelect`'s grouped listbox with `Combobox`'s filter-as-you-type input; exposes `focus()`                                     |
 | `Pressable`               | A real `<button>` for an interactive control that carries **no value** — the keyboard-correct replacement for `<span @click>` / `<div @click>`; optional `aria-pressed` toggle mode |
 | `Disclosure`              | Show/hide a region from a real `<button>` carrying `aria-expanded` + `aria-controls`; optionally wrapped in a real heading — the replacement for `<h2 @click>`                      |
 
@@ -189,6 +191,48 @@ the query, the committed selection is additionally conveyed to assistive tech th
 Like `Combobox` it exposes an imperative `focus()` handle. `clearLabel` / `emptyDisplayValue`
 deliberately do not transfer — an empty array is the multi "nothing", so there is no `null`
 to commit and no committed label to name.
+
+### Grouped selects (`GroupSelect` / `GroupCombobox`)
+
+`GroupSelect` and `GroupCombobox` are the single-selects for options that arrive **already
+partitioned** — active sprints above the backlog, tropical fruit above stone fruit. They
+mirror `SingleSelect` / `Combobox` closely (model `T['id'] | null`, the `#option` slot,
+`mutedOptions`, `clearLabel`, the announced empty state, the top-layer popup, and — on
+`GroupCombobox` — the imperative `focus()` handle) with one contract swap: **`options` becomes
+`groups`**.
+
+```ts
+groups: {options: T[]; text: string; header?: boolean}[];
+```
+
+Each group carries its own `options`, a header `text`, and an optional `header` flag. Groups
+render in **caller order** — there is no `alphabeticalSort`, because the partition _is_ the
+order — and the flat option index runs through them in sequence, so a single `v-model` selects
+across the whole set.
+
+- A **named** group renders `text` as a `role="group"` header labelling its options for
+  assistive tech.
+- `header: false` renders a **headerless** group: its options render flat, and a boundary keeps
+  them from folding into the preceding group's `role="group"`. Use it for a leading "ungrouped"
+  run above the named groups.
+- An **empty** group (no options) renders nothing — no dangling header. On `GroupCombobox` this
+  also covers a group the filter drains to nothing: a header never outlives its options.
+
+```vue
+<FormField id="fruit" label="Fruit" :error="errors.fruit" #default="{controlId, describedby, invalid}">
+    <GroupSelect
+        :id="controlId"
+        v-model="fruit"
+        :groups="[
+            {text: 'Tropical', options: tropical},
+            {text: 'Stone', options: stone},
+        ]"
+        label="name"
+        :invalid="invalid"
+        :describedby="describedby"
+    />
+</FormField>
+```
 
 ### Checkbox family
 

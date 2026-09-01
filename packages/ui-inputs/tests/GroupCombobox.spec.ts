@@ -250,9 +250,19 @@ describe('GroupCombobox', () => {
         expect(groupMenu(wrapper).exists()).toBe(false);
     });
 
-    it('propagates describedby to the input', () => {
-        const wrapper = mountGroupCombobox({describedby: 'fruit-error'});
-        expect(wrapper.find('input').attributes('aria-describedby')).toBe('fruit-error');
+    it('propagates required, invalid, and describedby to the input', () => {
+        const wrapper = mountGroupCombobox({required: true, invalid: true, describedby: 'fruit-error'});
+        const input = wrapper.find('input');
+
+        expect(input.attributes('aria-required')).toBe('true');
+        expect(input.attributes('aria-invalid')).toBe('true');
+        expect(input.attributes('aria-describedby')).toBe('fruit-error');
+    });
+
+    it('omits aria-required/aria-invalid when the flags are false (the `|| undefined` branch)', () => {
+        const input = mountGroupCombobox({}).find('input');
+        expect(input.attributes('aria-required')).toBeUndefined();
+        expect(input.attributes('aria-invalid')).toBeUndefined();
     });
 
     it('re-syncs input to committed label when model changes from outside while idle', async () => {
