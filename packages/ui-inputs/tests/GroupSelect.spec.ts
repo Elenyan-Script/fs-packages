@@ -216,6 +216,57 @@ describe('GroupSelect', () => {
         expect(groupMenu(wrapper).findAll('.ui-groupselect__option')).toHaveLength(2);
     });
 
+    it('hovers and commits an option inside a header=false (headerless-run) group', async () => {
+        const wrapper = mountGroupSelect({
+            groups: [
+                {
+                    options: [
+                        {id: 1, name: 'Mango'},
+                        {id: 2, name: 'Kiwi'},
+                    ],
+                    text: 'Tropical',
+                    header: false,
+                },
+                {options: [{id: 3, name: 'Apricot'}], text: 'Stone'},
+            ],
+        });
+        await wrapper.find('button').trigger('click');
+
+        // The header=false group renders its options flat (no group wrapper), through
+        // GroupOptionList's v-else headerless-run branch — hover then click land on that branch.
+        const options = groupMenu(wrapper).findAll('.ui-groupselect__option');
+        await options[1].trigger('mouseover'); // hover Kiwi (index 1)
+        expect(wrapper.find('button').attributes('aria-activedescendant')).toBe('fruit-opt-1');
+
+        await options[1].trigger('click'); // commit Kiwi
+        expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([2]);
+        expect(groupMenu(wrapper).exists()).toBe(false);
+    });
+
+    it('renders a header=false group AFTER a named group flat, not absorbed into the prior role="group"', async () => {
+        const wrapper = mountGroupSelect({
+            groups: [
+                {options: [{id: 1, name: 'Mango'}], text: 'Tropical'},
+                {options: [{id: 2, name: 'Apricot'}], text: 'Stone', header: false},
+            ],
+        });
+        await wrapper.find('button').trigger('click');
+        const m = groupMenu(wrapper);
+
+        // The named group's inner role="group" <ul> owns ONLY its own option — the headerless
+        // group's option must not be pulled into it (the boundary marker breaks the run).
+        const groupUl = m.find('.ui-groupselect__group ul[role="group"]');
+        expect(groupUl.findAll('.ui-groupselect__option')).toHaveLength(1);
+        expect(groupUl.find('.ui-groupselect__option').text()).toBe('Mango');
+
+        // Only one group header renders (Tropical); Stone is headerless.
+        expect(m.findAll('.ui-groupselect__group-header').map((h) => h.text())).toEqual(['Tropical']);
+
+        // Apricot renders flat: a menu-level option row, NOT a descendant of any role="group".
+        const flat = m.findAll(':scope > .ui-groupselect__option');
+        expect(flat.map((o) => o.text())).toEqual(['Apricot']);
+    });
+
     it('renders mutedOptions with .is-muted and keeps them committable', async () => {
         const wrapper = mountGroupSelect({mutedOptions: [2]}); // Kiwi
         await wrapper.find('button').trigger('click');

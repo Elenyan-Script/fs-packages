@@ -112,7 +112,9 @@ const emit = defineEmits<{hover: [index: number]; commit: [index: number]; clear
 const hasOptions = computed(() => rows.some((row) => row.type === 'option'));
 
 // Converts the flat GroupRow[] into runs keyed by header. Named runs use role="group"; runs
-// without a header (from `header:false` groups) render options flat in the listbox.
+// without a header (from `header:false` groups) render options flat in the listbox. A
+// `boundary` row closes the open run so the following headerless options start their own run
+// (via the `!current` path) rather than being absorbed into a preceding group.
 const groupedRuns = computed(() => {
     const runs: {header: string | null; indices: number[]}[] = [];
     let current: {header: string | null; indices: number[]} | null = null;
@@ -120,6 +122,8 @@ const groupedRuns = computed(() => {
         if (row.type === 'header') {
             current = {header: row.text, indices: []};
             runs.push(current);
+        } else if (row.type === 'boundary') {
+            current = null;
         } else {
             if (!current) {
                 current = {header: null, indices: []};

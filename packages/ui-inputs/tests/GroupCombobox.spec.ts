@@ -331,6 +331,26 @@ describe('GroupCombobox', () => {
         expect(groupMenu(wrapper).findAll('.ui-groupcombobox__option')).toHaveLength(2);
     });
 
+    it('renders a header=false group AFTER a named group flat, not absorbed into the prior role="group"', async () => {
+        const wrapper = mountGroupCombobox({
+            groups: [
+                {options: [{id: 1, name: 'Mango'}], text: 'Tropical'},
+                {options: [{id: 2, name: 'Apricot'}], text: 'Stone', header: false},
+            ],
+        });
+        await wrapper.find('input').trigger('click');
+        const m = groupMenu(wrapper);
+
+        // The named group's inner role="group" <ul> owns ONLY its own option — the boundary
+        // marker keeps the headerless group's option out of it.
+        const groupUl = m.find('.ui-groupcombobox__group ul[role="group"]');
+        expect(groupUl.findAll('.ui-groupcombobox__option')).toHaveLength(1);
+        expect(groupUl.find('.ui-groupcombobox__option').text()).toBe('Mango');
+
+        expect(m.findAll('.ui-groupcombobox__group-header').map((h) => h.text())).toEqual(['Tropical']);
+        expect(m.findAll(':scope > .ui-groupcombobox__option').map((o) => o.text())).toEqual(['Apricot']);
+    });
+
     it('renders mutedOptions with .is-muted and keeps them committable', async () => {
         const wrapper = mountGroupCombobox({mutedOptions: [2]}); // Kiwi
         await wrapper.find('input').trigger('click');

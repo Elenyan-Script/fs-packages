@@ -174,7 +174,9 @@ const filteredRows = computed(() => {
     const result: GroupRow[] = [];
     let index = 0;
     for (const group of filteredData.value) {
-        if (group.header !== false) result.push({type: 'header', text: group.text});
+        // A named group emits its header; a headerless group emits a boundary so its options
+        // never fold into the preceding group's role="group".
+        result.push(group.header !== false ? {type: 'header', text: group.text} : {type: 'boundary'});
         for (const _ of group.options) {
             result.push({type: 'option', index: index++});
         }

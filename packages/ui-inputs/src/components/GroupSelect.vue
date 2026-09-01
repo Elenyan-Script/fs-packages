@@ -149,7 +149,9 @@ const rows = computed(() => {
     let index = 0;
     for (const group of groups) {
         if (!group.options.length) continue;
-        if (group.header !== false) result.push({type: 'header', text: group.text});
+        // A named group emits its header; a headerless group emits a boundary so its options
+        // never fold into the preceding group's role="group".
+        result.push(group.header !== false ? {type: 'header', text: group.text} : {type: 'boundary'});
         for (const _ of group.options) {
             result.push({type: 'option', index: index++});
         }
