@@ -27,33 +27,37 @@
             <li v-if="run.header !== null" :class="`${variant}__group`" role="presentation">
                 <span :class="`${variant}__group-header`" aria-hidden="true">{{ run.header }}</span>
                 <ul role="group" :aria-label="run.header">
-                    <li
+                    <ListboxOption
                         v-for="index in run.indices"
                         :key="index"
-                        :id="optionId(index)"
-                        :class="[`${variant}__option`, {'is-active': pointer === index, 'is-muted': isMuted(index)}]"
-                        role="option"
-                        :aria-selected="isSelected(index)"
-                        @mouseover="emit('hover', index)"
-                        @click="emit('commit', index)"
+                        :index="index"
+                        :variant="variant"
+                        :option-id="optionId"
+                        :active="pointer === index"
+                        :muted="isMuted(index)"
+                        :selected="isSelected(index)"
+                        @hover="emit('hover', $event)"
+                        @commit="emit('commit', $event)"
                     >
                         <slot name="option" :index="index" />
-                    </li>
+                    </ListboxOption>
                 </ul>
             </li>
             <template v-else>
-                <li
+                <ListboxOption
                     v-for="index in run.indices"
                     :key="index"
-                    :id="optionId(index)"
-                    :class="[`${variant}__option`, {'is-active': pointer === index, 'is-muted': isMuted(index)}]"
-                    role="option"
-                    :aria-selected="isSelected(index)"
-                    @mouseover="emit('hover', index)"
-                    @click="emit('commit', index)"
+                    :index="index"
+                    :variant="variant"
+                    :option-id="optionId"
+                    :active="pointer === index"
+                    :muted="isMuted(index)"
+                    :selected="isSelected(index)"
+                    @hover="emit('hover', $event)"
+                    @commit="emit('commit', $event)"
                 >
                     <slot name="option" :index="index" />
-                </li>
+                </ListboxOption>
             </template>
         </template>
     </ul>
@@ -63,6 +67,18 @@
 import {computed} from 'vue';
 
 import type {GroupRow} from '../internal/group-rows';
+
+import ListboxOption from './ListboxOption.vue';
+
+/**
+ * The grouped listbox popup for GroupSelect/GroupCombobox — INTERNAL, not barrel-exported.
+ * It owns ONLY the group layout (the `role="group"` + `aria-label` wrappers and the headerless
+ * runs); the option row itself is the shared `ListboxOption`, the same component `OptionList`
+ * renders, so the `role="option"` / `aria-selected` / `is-active`+`is-muted` / hover+commit
+ * markup is no longer forked between the flat and grouped bodies. `groupedRuns` turns the flat
+ * `GroupRow[]` into named/headerless runs; a `boundary` row closes the open run so a
+ * `header:false` group after a named one renders flat instead of being absorbed.
+ */
 
 const {
     rows,

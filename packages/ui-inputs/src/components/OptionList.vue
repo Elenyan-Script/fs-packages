@@ -31,27 +31,31 @@
              the listbox its required option, while aria-disabled marks it non-selectable (the
              pointer never lands on it — useListbox has no navigable index when empty). -->
         <li v-if="!labels.length" :class="`${variant}__empty`" role="option" aria-disabled="true">{{ emptyText }}</li>
-        <li
+        <!-- The option row is the shared `ListboxOption` (its markup is byte-identical across
+             the family); the index-scoped `option` slot forwards through so `T` never crosses
+             this boundary — the parent re-scopes the index into its typed payload and owns the
+             slotless fallback (the labelOf text). Highlight/selection chrome stays on the <li>
+             inside ListboxOption, outside the slot, so custom content never re-creates it. -->
+        <ListboxOption
             v-for="(optionLabel, index) in labels"
-            :id="optionId(index)"
             :key="keys[index]"
-            :class="[`${variant}__option`, {'is-active': pointer === index, 'is-muted': isMuted(index)}]"
-            role="option"
-            :aria-selected="isSelected(index)"
-            @mouseover="emit('hover', index)"
-            @click="emit('commit', index)"
+            :index="index"
+            :variant="variant"
+            :option-id="optionId"
+            :active="pointer === index"
+            :muted="isMuted(index)"
+            :selected="isSelected(index)"
+            @hover="emit('hover', $event)"
+            @commit="emit('commit', $event)"
         >
-            <!-- Index-scoped so `T` never crosses this boundary: the parent re-scopes the
-                 index into its typed payload ({option, selected, active}) and owns the
-                 slotless fallback (the labelOf text) — this component renders whatever
-                 comes down. Highlight/selection chrome stays on the <li>, outside the slot,
-                 so custom option content never has to re-create it. -->
             <slot name="option" :index="index" />
-        </li>
+        </ListboxOption>
     </ul>
 </template>
 
 <script setup lang="ts">
+import ListboxOption from './ListboxOption.vue';
+
 /**
  * The listbox popup shared by every ui-inputs select control — INTERNAL, deliberately not
  * exported from the barrel (like `useListbox`, its behavioural twin). Where the composable
