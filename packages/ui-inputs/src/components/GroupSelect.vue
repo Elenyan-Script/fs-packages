@@ -78,10 +78,10 @@
 <script setup lang="ts" generic="T extends SelectItem">
 import {computed, useTemplateRef} from 'vue';
 
-import type {GroupRow} from '../internal/group-rows';
 import type {LabelKey, SelectItem} from '../types';
 
 import {useListbox} from '../composables/useListbox';
+import {buildGroupRows} from '../internal/group-rows';
 import OptionList from './OptionList.vue';
 
 const {
@@ -145,22 +145,9 @@ const selected = computed(() => flatOptions.value.find((option) => option.id ===
 // Stable `v-for` keys for OptionList, indexed by the flat option index `rows` navigates.
 const optionKeys = computed(() => flatOptions.value.map((option) => String(option.id)));
 
-// Build the mixed header/option row sequence. Groups with no options get no header row —
-// an empty group whose header renders would confuse users and violate the constraint.
-const rows = computed(() => {
-    const result: GroupRow[] = [];
-    let index = 0;
-    for (const group of groups) {
-        if (!group.options.length) continue;
-        // A named group emits its header; a headerless group emits a boundary so its options
-        // never fold into the preceding group's role="group".
-        result.push(group.header !== false ? {type: 'header', text: group.text} : {type: 'boundary'});
-        for (const _ of group.options) {
-            result.push({type: 'option', index: index++});
-        }
-    }
-    return result;
-});
+// The mixed header/boundary/option row sequence — the encoding lives once in `buildGroupRows`
+// (shared with GroupCombobox), so the boundary/empty-group rules stay a single-site invariant.
+const rows = computed(() => buildGroupRows(groups));
 
 /** `aria-selected` marks the COMMITTED value — OptionList only asks about rendered indices. */
 const isSelected = (index: number): boolean => flatOptions.value[index].id === model.value;

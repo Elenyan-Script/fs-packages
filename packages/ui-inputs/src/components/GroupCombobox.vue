@@ -77,10 +77,10 @@
 <script setup lang="ts" generic="T extends SelectItem">
 import {computed, ref, useTemplateRef, watch} from 'vue';
 
-import type {GroupRow} from '../internal/group-rows';
 import type {LabelKey, SelectItem} from '../types';
 
 import {useListbox} from '../composables/useListbox';
+import {buildGroupRows} from '../internal/group-rows';
 import {ensureRefValueExists} from '../internal/reactivity';
 import OptionList from './OptionList.vue';
 
@@ -171,21 +171,10 @@ const filteredOptions = computed(() => filteredData.value.flatMap((g) => g.optio
 // Stable `v-for` keys for OptionList, indexed by the flat (filtered) option index `rows` navigates.
 const optionKeys = computed(() => filteredOptions.value.map((option) => String(option.id)));
 
-// Build the mixed header/option row sequence from the filtered groups. Empty groups are already
-// excluded by filteredData, so we never emit a header row for a group with no visible options.
-const filteredRows = computed(() => {
-    const result: GroupRow[] = [];
-    let index = 0;
-    for (const group of filteredData.value) {
-        // A named group emits its header; a headerless group emits a boundary so its options
-        // never fold into the preceding group's role="group".
-        result.push(group.header !== false ? {type: 'header', text: group.text} : {type: 'boundary'});
-        for (const _ of group.options) {
-            result.push({type: 'option', index: index++});
-        }
-    }
-    return result;
-});
+// The mixed header/boundary/option row sequence over the filtered groups — same single-site
+// `buildGroupRows` encoding GroupSelect uses (filteredData has already dropped empty groups,
+// so its empty-group guard is a no-op here).
+const filteredRows = computed(() => buildGroupRows(filteredData.value));
 
 /** `aria-selected` marks the COMMITTED value — OptionList only asks about rendered indices. */
 const isSelected = (index: number): boolean => filteredOptions.value[index].id === model.value;
