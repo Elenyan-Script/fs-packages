@@ -17,7 +17,15 @@
             :aria-activedescendant="activeDescendant"
             @click="toggle"
         >
-            <span v-if="selected === undefined" class="ui-groupselect__placeholder">{{ placeholder }}</span>
+            <span
+                v-if="selected === undefined && emptyDisplayValue === undefined"
+                class="ui-groupselect__placeholder"
+                >{{ placeholder }}</span
+            >
+            <!-- A NAMED empty state ("No sprint (backlog)"): renders as a value, not as muted
+                 placeholder text — but `has-value` stays keyed on an actual selection, because
+                 the model IS null. -->
+            <span v-else-if="selected === undefined" class="ui-groupselect__value">{{ emptyDisplayValue }}</span>
             <span v-else class="ui-groupselect__value">{{ labelOf(selected) }}</span>
             <svg class="ui-groupselect__chevron" viewBox="0 0 20 20" aria-hidden="true">
                 <path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" />
@@ -97,6 +105,7 @@ const {
     optionsLabel = 'Options',
     mutedOptions,
     clearLabel,
+    emptyDisplayValue,
 } = defineProps<{
     /** caller-ordered groups, each with options and a display header. */
     groups: {options: T[]; text: string; header?: boolean}[];
@@ -120,6 +129,8 @@ const {
      * `null` and closes. Lives outside the option index space.
      */
     clearLabel?: string;
+    /** what the trigger renders when the model is null — as a VALUE, not muted placeholder text. */
+    emptyDisplayValue?: string;
 }>();
 
 defineSlots<{

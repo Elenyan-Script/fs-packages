@@ -372,9 +372,9 @@ danger-toned by default (`--ui-clear-text`, chaining to `--ui-danger-text`).
 
 `GroupSelect` and `GroupCombobox` are the grouped single-selects. They share the family's
 contract — `label`, `id`, `placeholder`, `disabled`, `required`, `invalid`, `describedby`,
-`emptyText`, `optionsLabel`, `mutedOptions`, `clearLabel`, the `#option` slot, and (on
-`GroupCombobox`) the imperative `focus()` handle — with **`options` replaced by `groups`** and
-no `alphabeticalSort` (the partition is the order):
+`emptyText`, `optionsLabel`, `mutedOptions`, `clearLabel`, `emptyDisplayValue`, the `#option`
+slot, and (on `GroupCombobox`) the imperative `focus()` handle — with **`options` replaced by
+`groups`** and no `alphabeticalSort` (the partition is the order):
 
 ```ts
 groups: {options: T[]; text: string; header?: boolean}[];

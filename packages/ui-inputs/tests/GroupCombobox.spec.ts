@@ -211,6 +211,43 @@ describe('GroupCombobox', () => {
         expect(input.element.value).toBe('');
     });
 
+    it('starts on emptyDisplayValue when mounted with a null model, and reverts to it on dismiss', async () => {
+        const wrapper = mountGroupCombobox({clearLabel: 'None', emptyDisplayValue: 'Any fruit'});
+        const root = wrapper.find('.ui-groupcombobox');
+        const input = wrapper.find('input');
+        expect(input.element.value).toBe('Any fruit');
+
+        await input.setValue('zzz'); // half-typed non-match…
+        await root.trigger('keydown', {key: 'Escape'});
+        expect(input.element.value).toBe('Any fruit'); // …reverts to the named empty state
+    });
+
+    it('clearLabel + emptyDisplayValue: Enter commits null and snaps the input to the named empty state', async () => {
+        const wrapper = mountGroupCombobox({clearLabel: 'None', emptyDisplayValue: 'Any fruit', modelValue: 1});
+        const root = wrapper.find('.ui-groupcombobox');
+        const input = wrapper.find('input');
+        expect(input.element.value).toBe('Mango');
+
+        await root.trigger('keydown', {key: 'ArrowDown'}); // open
+        await root.trigger('keydown', {key: 'ArrowDown'}); // → clear entry
+        expect(input.attributes('aria-activedescendant')).toBe('fruit-clear');
+        await root.trigger('keydown', {key: 'Enter'});
+
+        expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([null]);
+        expect(groupMenu(wrapper).exists()).toBe(false);
+        expect(input.element.value).toBe('Any fruit'); // the named empty state, not ''
+    });
+
+    it('does not filter by emptyDisplayValue when the committed-null rendering fills the input', async () => {
+        const wrapper = mountGroupCombobox({emptyDisplayValue: 'Any fruit'}); // model null → input 'Any fruit'
+        const input = wrapper.find('input');
+        expect(input.element.value).toBe('Any fruit');
+
+        await input.trigger('click');
+        // 'Any fruit' matches no option label, so the un-fixed filter would show an EMPTY list on open.
+        expect(groupMenu(wrapper).findAll('.ui-groupcombobox__option')).toHaveLength(4);
+    });
+
     it('aria-activedescendant tracks pointer through filtered options, not headers', async () => {
         const wrapper = mountGroupCombobox({});
         const root = wrapper.find('.ui-groupcombobox');

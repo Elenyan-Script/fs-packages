@@ -167,6 +167,51 @@ describe('styles.css — :root overrides (the --ui-* contract)', () => {
     });
 });
 
+describe('styles.css — group header (--ui-group-header-*)', () => {
+    /** A bare `<span class="ui-groupselect__group-header">` — the non-navigable group label. */
+    const addGroupHeader = (variant: 'groupselect' | 'groupcombobox' = 'groupselect'): HTMLElement => {
+        const header = document.createElement('span');
+        header.className = `ui-${variant}__group-header`;
+        header.textContent = 'Tropical';
+        document.body.append(header);
+        cleanupTargets.push(header);
+        return header;
+    };
+
+    it('renders the documented resting --ui-group-header-* defaults', () => {
+        addStyle(uiCss);
+        const header = addGroupHeader();
+        const computed = getComputedStyle(header);
+
+        expect(computed.display).toBe('block');
+        expect(computed.color).toBe('rgb(107, 114, 128)'); // --ui-group-header-color → --ui-control-text-muted
+        expect(computed.fontWeight).toBe('600'); // --ui-group-header-weight
+        expect(computed.textTransform).toBe('uppercase'); // --ui-group-header-transform
+    });
+
+    it('overriding --ui-group-header-* vars changes the rendered header', () => {
+        addStyle(uiCss);
+        const header = addGroupHeader();
+
+        document.documentElement.style.setProperty('--ui-group-header-color', 'rgb(1, 2, 3)');
+        document.documentElement.style.setProperty('--ui-group-header-weight', '800');
+        document.documentElement.style.setProperty('--ui-group-header-transform', 'none');
+
+        const computed = getComputedStyle(header);
+        expect(computed.color).toBe('rgb(1, 2, 3)');
+        expect(computed.fontWeight).toBe('800');
+        expect(computed.textTransform).toBe('none');
+    });
+
+    it('applies the same treatment to the GroupCombobox header (both selectors share the rule)', () => {
+        addStyle(uiCss);
+        const header = addGroupHeader('groupcombobox');
+        document.documentElement.style.setProperty('--ui-group-header-color', 'rgb(4, 5, 6)');
+
+        expect(getComputedStyle(header).color).toBe('rgb(4, 5, 6)');
+    });
+});
+
 describe('styles.css — WR-0512 font-size source-order regression pins', () => {
     it('the default reproduces the historical `font: inherit` (control text follows the parent)', () => {
         addStyle(uiCss);

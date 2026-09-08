@@ -220,9 +220,9 @@ to commit and no committed label to name.
 `GroupSelect` and `GroupCombobox` are the single-selects for options that arrive **already
 partitioned** — active sprints above the backlog, tropical fruit above stone fruit. They
 mirror `SingleSelect` / `Combobox` closely (model `T['id'] | null`, the `#option` slot,
-`mutedOptions`, `clearLabel`, the announced empty state, the top-layer popup, and — on
-`GroupCombobox` — the imperative `focus()` handle) with one contract swap: **`options` becomes
-`groups`**.
+`mutedOptions`, `clearLabel`, `emptyDisplayValue`, the announced empty state, the top-layer
+popup, and — on `GroupCombobox` — the imperative `focus()` handle) with one contract swap:
+**`options` becomes `groups`**.
 
 ```ts
 groups: {options: T[]; text: string; header?: boolean}[];

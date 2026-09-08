@@ -97,6 +97,7 @@ const {
     optionsLabel = 'Options',
     mutedOptions,
     clearLabel,
+    emptyDisplayValue,
 } = defineProps<{
     /** caller-ordered groups, each with options and a display header. */
     groups: {options: T[]; text: string; header?: boolean}[];
@@ -120,6 +121,8 @@ const {
      * commits `null` and closes. Lives outside the option index space and outside the filter.
      */
     clearLabel?: string;
+    /** what the input renders when the model is null — a NAMED empty state instead of `''`. */
+    emptyDisplayValue?: string;
 }>();
 
 defineSlots<{
@@ -141,7 +144,9 @@ const labelOf = (option: T): string =>
 // All options across all groups in declaration order — the base flat list.
 const allOptions = computed(() => groups.flatMap((g) => g.options));
 const selected = computed(() => allOptions.value.find((option) => option.id === model.value));
-const selectedLabel = computed(() => (selected.value ? labelOf(selected.value) : ''));
+// The committed-null rendering: `emptyDisplayValue` names the empty state ("No sprint
+// (backlog)") as a value; without it the input reverts to blank as before.
+const selectedLabel = computed(() => (selected.value ? labelOf(selected.value) : (emptyDisplayValue ?? '')));
 
 // The input's text is LOCAL state so the user can filter freely — it is not a mirror of the
 // committed label. It starts on the committed label, follows the user's typing while open, and

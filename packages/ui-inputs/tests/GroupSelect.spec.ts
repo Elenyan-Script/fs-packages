@@ -105,6 +105,15 @@ describe('GroupSelect', () => {
         expect(wrapper.find('.ui-groupselect__placeholder').exists()).toBe(false);
     });
 
+    it('renders emptyDisplayValue as the trigger VALUE when the model is null', () => {
+        const wrapper = mountGroupSelect({clearLabel: 'None', emptyDisplayValue: 'No fruit (any)'});
+
+        expect(wrapper.find('.ui-groupselect__placeholder').exists()).toBe(false);
+        expect(wrapper.find('.ui-groupselect__value').text()).toBe('No fruit (any)');
+        // `has-value` stays keyed on an actual selection — the model IS null.
+        expect(wrapper.find('.ui-groupselect__trigger').classes()).not.toContain('has-value');
+    });
+
     it('commits null on clear entry click', async () => {
         const wrapper = mountGroupSelect({clearLabel: 'None', modelValue: 1});
         await wrapper.find('button').trigger('click');
