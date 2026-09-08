@@ -1,5 +1,11 @@
 # @script-development/fs-cached-adapter-store
 
+## 0.2.6 — 2026-09-02
+
+### Patch Changes
+
+- **Peer-range widening for `@script-development/fs-adapter-store` `^0.4.0`.** `fs-adapter-store` published a minor (0.4.0, the additive `onPatch` broadcast handler). Pre-1.0 caret semantics require every `fs-adapter-store` consumer to widen its accepted range; no behavioural change. Mechanical cascade per fs-packages `CLAUDE.md` § Versioning Discipline.
+
 ## 0.2.4 — 2026-07-02
 
 ### Patch Changes

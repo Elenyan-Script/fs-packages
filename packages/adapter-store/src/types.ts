@@ -59,9 +59,24 @@ export type Adapter<T extends Item, E extends Adapted<T, object>, N extends NewA
  * applies events without an HTTP round-trip, do not
  * re-export the handlers onto your own public surface — that would publish a
  * non-HTTP write path for arbitrary callers.
+ *
+ * `onPatch(id, changes)` merges `changes` shallowly into the row the store holds,
+ * for channels with a frame-size ceiling where the producer sends only the fields
+ * that changed. It rejects a non-integer `id`, a `changes` that is `null`, an
+ * array, or a primitive, and a `changes` carrying an `id` key — an `id` inside the
+ * merge would re-key the row. The check is on shape, not on the prototype: a class
+ * instance passes and only its own enumerable fields merge. A patch for an id the store
+ * does not hold is a no-op: no state reassignment and no storage write, because a
+ * partial cannot become a full `T`. `onDelete` also does not throw on a missing id, but
+ * it still reassigns state and calls `storageService.put`. Nested values replace the
+ * stored value wholesale; there is no deep merge.
  */
 export type AdapterStoreBroadcast<T extends Item> = {
-    subscribe: (handlers: {onUpdate: (item: T) => void; onDelete: (id: number) => void}) => () => void;
+    subscribe: (handlers: {
+        onUpdate: (item: T) => void;
+        onDelete: (id: number) => void;
+        onPatch: (id: number, changes: Partial<Omit<T, 'id'>>) => void;
+    }) => () => void;
 };
 
 /**

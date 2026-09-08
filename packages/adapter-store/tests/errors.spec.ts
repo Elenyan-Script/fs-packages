@@ -72,6 +72,17 @@ describe('BroadcastPayloadError', () => {
         expect(error.name).toBe('BroadcastPayloadError');
     });
 
+    it('should describe an invalid onPatch payload, naming the expected shape and received type', () => {
+        // Act
+        const error = new BroadcastPayloadError('users', 'onPatch', 'KD-7');
+
+        // Assert
+        expect(error.message).toBe(
+            'users broadcast onPatch received an invalid payload — expected an integer id and a non-null, non-array object of changes without an `id` key, got string. The store rejects it rather than corrupting state.',
+        );
+        expect(error.name).toBe('BroadcastPayloadError');
+    });
+
     it('should be an instance of Error', () => {
         // Act
         const error = new BroadcastPayloadError('items', 'onUpdate', undefined);

@@ -12,11 +12,16 @@ export class MissingResponseDataError extends Error {
     }
 }
 
+const BROADCAST_EXPECTATIONS = {
+    onUpdate: 'an object with an integer `id`',
+    onDelete: 'an integer id',
+    onPatch: 'an integer id and a non-null, non-array object of changes without an `id` key',
+} as const;
+
 export class BroadcastPayloadError extends Error {
-    constructor(domainName: string, handler: 'onUpdate' | 'onDelete', received: unknown) {
-        const expected = handler === 'onUpdate' ? 'an object with an integer `id`' : 'an integer id';
+    constructor(domainName: string, handler: keyof typeof BROADCAST_EXPECTATIONS, received: unknown) {
         super(
-            `${domainName} broadcast ${handler} received an invalid payload — expected ${expected}, got ${typeof received}. The store rejects it rather than corrupting state.`,
+            `${domainName} broadcast ${handler} received an invalid payload — expected ${BROADCAST_EXPECTATIONS[handler]}, got ${typeof received}. The store rejects it rather than corrupting state.`,
         );
         this.name = 'BroadcastPayloadError';
     }

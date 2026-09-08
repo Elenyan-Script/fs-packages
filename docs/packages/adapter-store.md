@@ -187,12 +187,15 @@ Some resources are updated outside of the store's own CRUD calls — by another 
 import type {AdapterStoreBroadcast} from '@script-development/fs-adapter-store';
 
 const broadcast: AdapterStoreBroadcast<User> = {
-    subscribe: ({onUpdate, onDelete}) => {
+    subscribe: ({onUpdate, onDelete, onPatch}) => {
+        const onPatched = ({id, changes}: {id: number; changes: Partial<Omit<User, 'id'>>}) => onPatch(id, changes);
         eventSource.on('user.updated', onUpdate);
         eventSource.on('user.deleted', onDelete);
+        eventSource.on('user.patched', onPatched);
         return () => {
             eventSource.off('user.updated', onUpdate);
             eventSource.off('user.deleted', onDelete);
+            eventSource.off('user.patched', onPatched);
         };
     },
 };
@@ -207,17 +210,19 @@ const usersStore = createAdapterStoreModule<User>({
 });
 ```
 
-The store calls `subscribe` exactly once at construction and wires the handlers straight into its internal mutation path. `onUpdate(item)` replaces or inserts; `onDelete(id)` removes. Both update reactive state, refresh adapted views, and persist to storage — identical to what `update()` / `delete()` do after a successful HTTP call.
+The store calls `subscribe` exactly once at construction and wires the handlers straight into its internal mutation path. `onUpdate(item)` replaces or inserts; `onDelete(id)` removes; `onPatch(id, changes)` merges `changes` shallowly into the item the store already holds. All three update reactive state, refresh adapted views, and persist to storage — identical to what `update()` / `delete()` / `patch()` do after a successful HTTP call.
+
+`onPatch` exists for channels with a frame-size ceiling (Reverb/Pusher cap a frame at 10 KB), where the producer sends only the fields that changed instead of the full row. The merge is shallow: a nested value replaces the stored value wholesale. A patch for an id the store does not hold is a no-op — no state write and no storage write — because the store cannot fabricate a full item from a partial. `onDelete` also does not throw on a missing id, but it still reassigns state and persists.
 
 ::: tip Why isn't there a public `setById` / `applyUpdate` method?
 By design. Exposing a raw mutation method would let any caller bypass HTTP, which is almost always a bug (you'd end up with stale server state). The `broadcast` contract forces the bridge to be declared explicitly at store construction, scoped to one event source per store.
 :::
 
-The handlers the store passes to your `subscribe` are **validating wrappers**, not the raw internal mutators. Because broadcast payloads come from an external channel and are applied without an HTTP round-trip, they are checked before they touch state: `onUpdate` requires an object with an integer `id`, `onDelete` requires an integer id (`NaN` / `Infinity` / non-integer floats are rejected — they pass a `typeof === 'number'` check but corrupt the keyspace). A payload that fails throws [`BroadcastPayloadError`](#error-handling) rather than corrupting the store. The raw mutators never leave the factory — and since this is a closed contract, don't re-export the handlers onto your own public surface, which would publish a non-HTTP write path for arbitrary callers.
+The handlers the store passes to your `subscribe` are **validating wrappers**, not the raw internal mutators. Because broadcast payloads come from an external channel and are applied without an HTTP round-trip, they are checked before they touch state: `onUpdate` requires an object with an own integer `id` (an inherited `id` is rejected — object spread and the storage round-trip both drop it, so the row would lose its key), `onDelete` requires an integer id (`NaN` / `Infinity` / non-integer floats are rejected — they pass a `typeof === 'number'` check but corrupt the keyspace), and `onPatch` requires an integer id plus a non-null, non-array object of changes without an `id` key — `null`, an array, a primitive, or an object carrying an `id` key is rejected, because an `id` inside the merge would re-key the row. That check is on shape, not on the prototype: a class instance passes and only its own enumerable fields merge. A payload that fails throws [`BroadcastPayloadError`](#error-handling) rather than corrupting the store. The raw mutators never leave the factory — and since this is a closed contract, don't re-export the handlers onto your own public surface, which would publish a non-HTTP write path for arbitrary callers.
 
 ### Lifecycle
 
-The `subscribe` call happens once, when the store is created. The unsubscribe return is retained internally and never exposed. In practice stores live for the app's lifetime, so teardown isn't needed — but if your event source has its own lifecycle (e.g., a channel you join and leave), manage that _outside_ the store. The store only cares about incoming events, not which channel they came from.
+The `subscribe` call happens once, when the store is created. The store discards the unsubscribe return and never calls it — it does not tear down the subscription itself. In practice stores live for the app's lifetime, so teardown isn't needed — but if your event source has its own lifecycle (e.g., a channel you join and leave), manage that _outside_ the store. The store only cares about incoming events, not which channel they came from.
 
 A common pattern is a small in-process emitter as a middleman: your transport layer (WebSocket, SSE, channel service, whatever) joins and leaves connections as views mount/unmount, and forwards incoming payloads onto an emitter that the store subscribes to. The store stays agnostic of transport and lifecycle.
 
@@ -225,11 +230,15 @@ A common pattern is a small in-process emitter as a middleman: your transport la
 
 ```typescript
 type AdapterStoreBroadcast<T> = {
-    subscribe: (handlers: {onUpdate: (item: T) => void; onDelete: (id: number) => void}) => () => void; // unsubscribe
+    subscribe: (handlers: {
+        onUpdate: (item: T) => void;
+        onDelete: (id: number) => void;
+        onPatch: (id: number, changes: Partial<Omit<T, 'id'>>) => void;
+    }) => () => void; // unsubscribe
 };
 ```
 
-That's it. Any event source that can emit "updated" and "deleted" events for your resource type can implement this.
+That's it. Any event source that can emit "updated" and "deleted" events for your resource type can implement this; wire `onPatch` too when the channel emits partial updates.
 
 ## Extending the Store
 
@@ -306,7 +315,7 @@ import {
 
 - **`EntryNotFoundError`** — thrown by `getOrFailById` when the resource doesn't exist in the store
 - **`MissingResponseDataError`** — thrown when a CRUD response doesn't contain a `data` field
-- **`BroadcastPayloadError`** — thrown by a `broadcast` handler when the incoming payload is malformed (`onUpdate` not given an object with an integer `id`, or `onDelete` given a non-integer id)
+- **`BroadcastPayloadError`** — thrown by a `broadcast` handler when the incoming payload is malformed (`onUpdate` not given an object with an integer `id`, `onDelete` given a non-integer id, or `onPatch` given a non-integer id or a `changes` value that is `null`, an array, a primitive, or carries an `id` key)
 - **`ExtendKeyCollisionError`** — thrown at store construction when an `extend` method's key collides with a built-in store method
 - **`ExtendPayloadError`** — thrown by `extend`'s `retrieveInto` when a fetched item is not an object with an integer `id` (a malformed backend response cannot corrupt the keyspace)
 

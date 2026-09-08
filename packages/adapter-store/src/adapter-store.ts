@@ -45,14 +45,26 @@ export const createAdapterStoreModule = <
         return adapted;
     };
 
-    // A value is storable only if it is an object with an integer `id`. The id must be
+    // A value is storable only if it is an object with an own integer `id`. The id must be
     // an integer, not merely `typeof === 'number'` — `NaN` / `Infinity` / a non-integer
     // float pass a typeof check yet corrupt the keyspace (`state.value[NaN]` stringifies
     // to `"NaN"`, and `deleteById` could never match it since `Number("NaN") !== NaN`).
-    // Shared by every validating ingest boundary (`broadcast`'s handlers and `extend`'s
-    // `retrieveInto`), so the raw mutators below never leave the factory.
+    // It must be an own property: an inherited `id` is dropped by object spread and by the
+    // storage `JSON.stringify` round-trip, so the row would lose its key on the next merge
+    // or reload. Shared by every validating ingest boundary (`broadcast`'s handlers and
+    // `extend`'s `retrieveInto`), so the raw mutators below never leave the factory.
     const isStorableItem = (item: unknown): item is T =>
-        typeof item === 'object' && item !== null && Number.isInteger((item as {id?: unknown}).id);
+        typeof item === 'object' &&
+        item !== null &&
+        Object.hasOwn(item, 'id') &&
+        Number.isInteger((item as {id: unknown}).id);
+
+    // A patch may only carry a non-null, non-array object of changes without an `id`: an
+    // `id` inside `changes` would re-key the row it is merged into, and an array spreads to
+    // numeric keys. The check is on shape, not on the prototype — a class instance passes
+    // and only its own enumerable fields merge.
+    const isPatchChanges = (changes: unknown): changes is Partial<Omit<T, 'id'>> =>
+        typeof changes === 'object' && changes !== null && !Array.isArray(changes) && !('id' in changes);
 
     const setById = (item: T): void => {
         state.value = {...state.value, [item.id]: Object.freeze(item)};
@@ -90,6 +102,19 @@ export const createAdapterStoreModule = <
                 throw new BroadcastPayloadError(domainName, 'onDelete', id);
             }
             deleteById(id);
+        },
+        onPatch: (id, changes) => {
+            if (!Number.isInteger(id)) {
+                throw new BroadcastPayloadError(domainName, 'onPatch', id);
+            }
+            if (!isPatchChanges(changes)) {
+                throw new BroadcastPayloadError(domainName, 'onPatch', changes);
+            }
+            const current = state.value[id];
+            if (!current) return;
+            // `id` is re-stamped last so the row's key is the validated id by construction,
+            // never something the spread happened to carry.
+            setById({...current, ...changes, id});
         },
     });
 

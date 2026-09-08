@@ -14,6 +14,11 @@
     /* field / label */
     --ui-field-gap: 0.4rem;
     --ui-field-margin: 0 0 1.25rem;
+    /* horizontal orientation only: label column width + the LABEL's cross-axis alignment in its row.
+       Applied via align-self on the label alone, so a wrapped label that makes the row taller never
+       moves the control — that stays pinned to the row top. */
+    --ui-field-label-width: 12rem;
+    --ui-field-label-align: start;
     --ui-label-color: #374151;
     --ui-label-size: 0.875rem;
     --ui-label-weight: 500;
@@ -177,6 +182,45 @@
     flex-direction: column;
     gap: var(--ui-field-gap);
     margin: var(--ui-field-margin);
+}
+
+/* Wraps the control slot so multi-node slot content (e.g. an input plus an inline hint) can occupy a
+   single grid cell when horizontal. In the vertical default it generates no box at all, so the
+   field's flex column sees exactly the nodes it saw before the wrapper existed. */
+.ui-field__control {
+    display: contents;
+}
+
+/* Horizontal orientation (opt-in via the `orientation` prop → `.is-horizontal`, the sheet's state-class
+   vocabulary — a class merges with consumer classes where a data attribute could be clobbered by a
+   fallthrough attr): label in a fixed left column, control on the right, error beneath the control.
+   The base .ui-field flex column stays the default — and stays the layout below 48rem (768px, the
+   usual `md` breakpoint): a fixed label column has no room on a phone, so a horizontal field
+   collapses back to the vertical shape there. The breakpoint is a constant, not a --ui-* var:
+   a custom property cannot drive a media query. */
+@media (min-width: 48rem) {
+    .ui-field.is-horizontal {
+        display: grid;
+        grid-template-columns: var(--ui-field-label-width) minmax(0, 1fr);
+        align-items: start;
+    }
+    .ui-field.is-horizontal > .ui-label {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: var(--ui-field-label-align);
+    }
+    .ui-field.is-horizontal > .ui-field__control {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ui-field-gap);
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+    }
+    .ui-field.is-horizontal > .ui-error {
+        grid-column: 2;
+        grid-row: 2;
+    }
 }
 
 .ui-label {

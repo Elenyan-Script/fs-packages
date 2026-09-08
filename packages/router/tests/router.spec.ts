@@ -4,6 +4,7 @@ import type {RouteRecordRaw} from 'vue-router';
 import {flushPromises} from '@vue/test-utils';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {defineComponent, h} from 'vue';
+import {START_LOCATION} from 'vue-router';
 
 import {createRouterService} from '../src';
 
@@ -37,6 +38,7 @@ describe('router service', () => {
 
             // Assert
             expect(service).toHaveProperty('install');
+            expect(service).toHaveProperty('isReady');
             expect(service).toHaveProperty('goToRoute');
             expect(service).toHaveProperty('goToCreatePage');
             expect(service).toHaveProperty('goToOverviewPage');
@@ -71,6 +73,38 @@ describe('router service', () => {
 
             // Act & Assert
             expect(() => service.install()).not.toThrow();
+        });
+
+        it('should return the navigation promise so a consumer can await it before mounting', async () => {
+            // Arrange
+            window.history.pushState({}, '', '/about');
+            const service = createRouterService(createTestRoutes());
+
+            // Act — the return is the navigation promise, not undefined
+            const navigation = service.install();
+
+            // Assert — awaiting it is enough; no flushPromises needed to observe the resolved route
+            expect(navigation).toBeInstanceOf(Promise);
+            await navigation;
+            expect(service.currentRouteRef.value.name).toBe('about');
+            // Reset
+            window.history.pushState({}, '', '/');
+        });
+
+        it('should leave currentRouteRef on START_LOCATION until the navigation settles', async () => {
+            // Arrange
+            window.history.pushState({}, '', '/about');
+            const service = createRouterService(createTestRoutes());
+
+            // Act — synchronously after install(), the first navigation has not resolved yet
+            const navigation = service.install();
+
+            // Assert — this is the window in which RouterView must paint nothing
+            expect(service.currentRouteRef.value).toBe(START_LOCATION);
+            await navigation;
+            expect(service.currentRouteRef.value).not.toBe(START_LOCATION);
+            // Reset
+            window.history.pushState({}, '', '/');
         });
 
         it('should navigate to current location', async () => {
@@ -122,6 +156,36 @@ describe('router service', () => {
             expect(afterSpy).toHaveBeenCalled();
             // Reset
             window.history.pushState({}, '', '/');
+        });
+    });
+
+    describe('isReady', () => {
+        it('should resolve once the first navigation dispatched by install has settled', async () => {
+            // Arrange
+            window.history.pushState({}, '', '/about');
+            const service = createRouterService(createTestRoutes());
+
+            // Act
+            service.install();
+            await service.isReady();
+
+            // Assert — the start sentinel is gone by the time isReady resolves
+            expect(service.currentRouteRef.value).not.toBe(START_LOCATION);
+            expect(service.currentRouteRef.value.name).toBe('about');
+            // Reset
+            window.history.pushState({}, '', '/');
+        });
+
+        it('should resolve after a navigation dispatched without install', async () => {
+            // Arrange
+            const service = createRouterService(createTestRoutes());
+
+            // Act — isReady tracks the router's first navigation whatever dispatched it
+            await service.goToRoute('about');
+            await service.isReady();
+
+            // Assert
+            expect(service.currentRouteRef.value.name).toBe('about');
         });
     });
 
@@ -876,13 +940,18 @@ describe('router service', () => {
             // Act
             await service.goToRoute('about');
 
-            // Assert — the fire-and-forget dispatch's rejection is caught and reported
+            // Assert — the fire-and-forget dispatch's rejection reaches the console rather than
+            // going nowhere. WHICH reporter carries it is not this spec's contract and is asserted
+            // where it belongs, in the round-7 block of `components.spec.ts`: a throw routed through
+            // `triggerError` is reported by `onError`, and the redirect reporter defers to it so one
+            // failure does not produce two lines. Pinning the redirect message here made this spec
+            // fail on a change that lost nothing — the failure is still reported, once.
             await vi.waitFor(() => {
-                expect(consoleErrorSpy).toHaveBeenCalledWith(
-                    'fs-router: middleware redirect navigation failed',
-                    expect.any(Error),
-                );
+                expect(consoleErrorSpy).toHaveBeenCalledWith('fs-router: navigation failed', expect.any(Error));
             });
+            expect(consoleErrorSpy.mock.calls.filter((call) => String(call[0]).startsWith('fs-router:'))).toHaveLength(
+                1,
+            );
         });
     });
 

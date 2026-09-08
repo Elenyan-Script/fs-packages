@@ -46,6 +46,29 @@ import '@script-development/ui-inputs/style.css';
 </FormField>
 ```
 
+### Horizontal field layout
+
+`FormField` stacks the label above the control by default. Pass `orientation="horizontal"` to place the label
+in a fixed left column instead — control on the right, error beneath the control. An unlabelled field ignores `orientation` and keeps the vertical default — there is no label to give a column to, so the control uses the full width. Set the column width with
+`--ui-field-label-width` (default `12rem`) and the label's cross-axis alignment with `--ui-field-label-align`
+(default `start`). The field carries `.is-horizontal`, and the slot content sits inside a `.ui-field__control`
+wrapper (`display: contents` when vertical, so the default layout is unchanged; a selector like
+`.ui-field > .ui-control` now needs `.ui-field .ui-control`). **Below `48rem` (768px) a horizontal field
+renders vertical** — the label column has no room on a phone, so the sheet collapses it to the default
+shape at that fixed breakpoint (a custom property cannot drive a media query, so it is not a `--ui-*` var):
+
+```vue
+<FormField
+    id="fruit"
+    label="Fruit"
+    orientation="horizontal"
+    :error="errors.fruit"
+    #default="{controlId, describedby, invalid}"
+>
+    <SingleSelect :id="controlId" v-model="fruit" :options="fruits" label="name" :invalid="invalid" :describedby="describedby" />
+</FormField>
+```
+
 ### The select family's shared extras
 
 **Per-option content — the `#option` scoped slot.** All four selects render each option's

@@ -5,8 +5,8 @@
 // asserted through getComputedStyle — the layer no happy-dom spec can see. Includes the
 // WR-0512 regression pins (font-size source-order fight) and the state-variant hooks on a
 // real keyboard :focus-visible.
-import {afterEach, describe, expect, it} from 'vitest';
-import {cdp, userEvent} from 'vitest/browser';
+import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {cdp, page, userEvent} from 'vitest/browser';
 
 // `?inline` yields the stylesheet as text so each test controls WHERE in the cascade the
 // package sheet sits — the WR-0512 pins need both orderings, which a plain side-effect
@@ -688,5 +688,169 @@ describe('styles.css — reduced-motion gate (WR-0587 F-7)', () => {
         // Every NEW transition the sheet declares must join the gate — the pressable's focus-ring
         // ease and the disclosure chevron's rotate.
         expect(getComputedStyle(pressable).transitionDuration).toBe('0s');
+    });
+});
+
+// FormField orientation — the label/control/error placement no happy-dom spec can see, asserted
+// through real layout geometry. Vertical is the historical flex column; horizontal is the opt-in
+// grid (label-left / control-right / error-under-control).
+describe('styles.css — FormField orientation layout', () => {
+    // The horizontal grid exists from 48rem; below it the field is the vertical default. That contract
+    // can only be observed by driving the viewport, so this describe is the one place in the suite
+    // that does: it widens when the runner starts out narrower than the breakpoint and puts the
+    // runner's own size back after every test, so nothing here leaks into the specs that follow.
+    const BREAKPOINT_PX = 48 * 16;
+    const runnerViewport = {width: window.innerWidth, height: window.innerHeight};
+
+    beforeEach(async () => {
+        if (window.innerWidth < BREAKPOINT_PX) await page.viewport(1024, 768);
+    });
+
+    afterEach(async () => {
+        await page.viewport(runnerViewport.width, runnerViewport.height);
+    });
+
+    /** The FormField chassis: `.ui-field > .ui-label + .ui-field__control(.ui-control) + .ui-error`. */
+    const addField = (
+        orientation?: 'horizontal',
+    ): {field: HTMLElement; label: HTMLElement; control: HTMLElement; input: HTMLElement; error: HTMLElement} => {
+        const field = document.createElement('div');
+        field.className = orientation ? 'ui-field is-horizontal' : 'ui-field';
+        const label = document.createElement('label');
+        label.className = 'ui-label';
+        label.textContent = 'Label';
+        const control = document.createElement('div');
+        control.className = 'ui-field__control';
+        const input = document.createElement('input');
+        input.className = 'ui-control';
+        control.append(input);
+        const error = document.createElement('p');
+        error.className = 'ui-error';
+        error.textContent = 'Bad';
+        field.append(label, control, error);
+        document.body.append(field);
+        cleanupTargets.push(field);
+        return {field, label, control, input, error};
+    };
+
+    it('stacks the label above the control by default (vertical flex column)', () => {
+        addStyle(uiCss);
+        const {field, label, control, input} = addField();
+
+        expect(getComputedStyle(field).display).toBe('flex');
+        expect(getComputedStyle(field).flexDirection).toBe('column');
+        expect(label.getBoundingClientRect().bottom).toBeLessThanOrEqual(input.getBoundingClientRect().top + 1);
+        // The wrapper generates no box of its own here, so the column sees label, input, error — as before it existed.
+        expect(getComputedStyle(control).display).toBe('contents');
+    });
+
+    it('does not add a second gap in the vertical default when the slot renders nothing', () => {
+        addStyle(uiCss);
+        const {label, control, error} = addField();
+        control.replaceChildren();
+
+        // label → error distance is exactly one --ui-field-gap (0.4rem = 6.4px), not two.
+        const distance = error.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+        expect(distance).toBeCloseTo(6.4, 0);
+    });
+
+    it('lets the control column shrink instead of overflowing a narrow field when horizontal', () => {
+        addStyle(uiCss);
+        document.documentElement.style.setProperty('--ui-field-label-width', '100px');
+        const {field, input} = addField('horizontal');
+        field.style.width = '300px';
+        input.setAttribute('size', '300');
+        input.style.width = '100%';
+
+        expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1);
+    });
+
+    it('puts the label in a fixed left column with the error under the control when horizontal', () => {
+        addStyle(uiCss);
+        document.documentElement.style.setProperty('--ui-field-label-width', '180px');
+        const {field, label, control, error} = addField('horizontal');
+
+        expect(getComputedStyle(field).display).toBe('grid');
+
+        const l = label.getBoundingClientRect();
+        const c = control.getBoundingClientRect();
+        const e = error.getBoundingClientRect();
+
+        // Label sits to the LEFT of the control, sharing its row, in a column narrower than the control.
+        expect(l.right).toBeLessThanOrEqual(c.left + 1);
+        expect(l.top).toBeLessThan(c.bottom);
+        expect(l.width).toBeLessThan(c.width);
+        // The error is BELOW the control and in the control's column — never under the label.
+        expect(e.top).toBeGreaterThanOrEqual(c.bottom - 1);
+        expect(e.left).toBeGreaterThanOrEqual(c.left - 1);
+    });
+
+    it('sizes the label column from --ui-field-label-width', () => {
+        addStyle(uiCss);
+        document.documentElement.style.setProperty('--ui-field-label-width', '180px');
+        const {label} = addField('horizontal');
+
+        expect(label.getBoundingClientRect().width).toBeCloseTo(180, 0);
+    });
+
+    it('aligns only the label with --ui-field-label-align; the control stays pinned to the row top', () => {
+        addStyle(uiCss);
+        // Controls taller than their label, so the alignment has room to show.
+        const startField = addField('horizontal');
+        startField.input.style.height = '80px';
+        const centerField = addField('horizontal');
+        centerField.input.style.height = '80px';
+        centerField.field.style.setProperty('--ui-field-label-align', 'center');
+
+        const start = {
+            label: startField.label.getBoundingClientRect(),
+            control: startField.control.getBoundingClientRect(),
+        };
+        const center = {
+            label: centerField.label.getBoundingClientRect(),
+            control: centerField.control.getBoundingClientRect(),
+        };
+
+        // start (the default): the label's top meets the control's top.
+        expect(Math.abs(start.label.top - start.control.top)).toBeLessThanOrEqual(1);
+        // center: the label's midpoint meets the control's midpoint.
+        const labelMid = (center.label.top + center.label.bottom) / 2;
+        const controlMid = (center.control.top + center.control.bottom) / 2;
+        expect(Math.abs(labelMid - controlMid)).toBeLessThanOrEqual(1);
+        // The control itself did not move: it starts at its row's top under either alignment.
+        expect(start.control.top - startField.field.getBoundingClientRect().top).toBeCloseTo(
+            center.control.top - centerField.field.getBoundingClientRect().top,
+            0,
+        );
+    });
+
+    it('keeps the control at the row top when a wrapped label makes the row taller than the control', () => {
+        addStyle(uiCss);
+        document.documentElement.style.setProperty('--ui-field-label-width', '60px');
+        const {field, label, control} = addField('horizontal');
+        field.style.setProperty('--ui-field-label-align', 'center');
+        label.textContent = 'A label long enough to wrap onto several lines in a narrow column';
+
+        const l = label.getBoundingClientRect();
+        const c = control.getBoundingClientRect();
+
+        expect(l.height).toBeGreaterThan(c.height);
+        expect(Math.abs(c.top - field.getBoundingClientRect().top)).toBeLessThanOrEqual(1);
+    });
+
+    it('collapses a horizontal field to the vertical shape below 48rem — a phone has no room for a label column', async () => {
+        addStyle(uiCss);
+        await page.viewport(375, 800);
+        const {field, label, control, input} = addField('horizontal');
+
+        // Byte-identical to the vertical default: flex column, wrapper generating no box, label above the input.
+        expect(getComputedStyle(field).display).toBe('flex');
+        expect(getComputedStyle(field).flexDirection).toBe('column');
+        expect(getComputedStyle(control).display).toBe('contents');
+        expect(label.getBoundingClientRect().bottom).toBeLessThanOrEqual(input.getBoundingClientRect().top + 1);
+
+        // And the grid comes back the moment there is room for it.
+        await page.viewport(1024, 768);
+        expect(getComputedStyle(field).display).toBe('grid');
     });
 });

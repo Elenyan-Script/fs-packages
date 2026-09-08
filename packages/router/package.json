@@ -1,6 +1,6 @@
 {
     "name": "@script-development/fs-router",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Type-safe router service factory with CRUD navigation, middleware pipeline, and custom components for Vue Router",
     "homepage": "https://packages.script.nl/packages/router",
     "license": "MIT",
@@ -42,14 +42,14 @@
         "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
-        "@vue/test-utils": "^2.4.11",
-        "happy-dom": "^20.11.6",
-        "vue": "^3.5.41",
-        "vue-router": "^5.2.0"
+        "@vue/test-utils": "^2.5.0",
+        "happy-dom": "^20.12.0",
+        "vue": "^3.5.42",
+        "vue-router": "^5.3.0"
     },
     "peerDependencies": {
-        "vue": "^3.5.41",
-        "vue-router": "^5.2.0"
+        "vue": "^3.5.42",
+        "vue-router": "^5.3.0"
     },
     "engines": {
         "node": ">=24.0.0"

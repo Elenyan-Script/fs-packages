@@ -42,4 +42,42 @@ describe('FormField', () => {
         expect(wrapper.find('label').exists()).toBe(false);
         expect(wrapper.text()).toContain('ctl:search|err:search-error');
     });
+
+    it('renders the vertical default with the control wrapped and no horizontal class', () => {
+        const wrapper = mount(FormField, {props: {id: 'email'}, slots: {default: wiringSlot}});
+
+        expect(wrapper.find('.ui-field').classes()).not.toContain('is-horizontal');
+        expect(wrapper.find('.ui-field__control').exists()).toBe(true);
+        expect(wrapper.find('.ui-field__control').text()).toContain('ctl:email');
+    });
+
+    it('marks the field horizontal when orientation is set on a labelled field', () => {
+        const wrapper = mount(FormField, {
+            props: {id: 'email', label: 'Email', orientation: 'horizontal'},
+            slots: {default: wiringSlot},
+        });
+
+        expect(wrapper.find('.ui-field').classes()).toContain('is-horizontal');
+    });
+
+    it('ignores orientation without a label, so no empty label column is reserved', () => {
+        const wrapper = mount(FormField, {
+            props: {id: 'accept', orientation: 'horizontal'},
+            slots: {default: wiringSlot},
+        });
+
+        expect(wrapper.find('.ui-field').classes()).not.toContain('is-horizontal');
+    });
+
+    it('keeps multi-node slot content together inside the control wrapper', () => {
+        const wrapper = mount(FormField, {
+            props: {id: 'email', orientation: 'horizontal'},
+            slots: {default: '<input class="ui-control" /><small class="hint">Work address</small>'},
+        });
+
+        const control = wrapper.find('.ui-field__control');
+        expect(control.find('input.ui-control').exists()).toBe(true);
+        expect(control.find('small.hint').exists()).toBe(true);
+        expect(wrapper.findAll('.ui-field > *')).toHaveLength(1);
+    });
 });

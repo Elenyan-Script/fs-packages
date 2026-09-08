@@ -227,6 +227,22 @@ Pass `header: false` on a group to render its options **flat** (a leading "ungro
 </FormField>
 ```
 
+### Horizontal field layout
+
+By default `FormField` stacks the label above the control. Pass `orientation="horizontal"` to place the label in a fixed left column instead — control on the right, error beneath the control. An unlabelled field ignores `orientation` and keeps the vertical default — there is no label to give a column to, so the control uses the full width. Size the column with `--ui-field-label-width` (default `12rem`) and set the label's cross-axis alignment with `--ui-field-label-align` (default `start`). The field carries `.is-horizontal`, and the slot content sits inside a `.ui-field__control` wrapper — `display: contents` when vertical, so the default layout is unchanged; a consumer selector like `.ui-field > .ui-control` now needs `.ui-field .ui-control`. **Below `48rem` (768px) a horizontal field renders vertical**: the label column has no room on a phone, so the sheet collapses it to the default shape at that fixed breakpoint (a custom property cannot drive a media query, so the breakpoint is a constant, not a `--ui-*` var):
+
+```vue
+<FormField
+    id="email"
+    label="Email"
+    orientation="horizontal"
+    :error="errors.email"
+    #default="{controlId, describedby, invalid}"
+>
+    <TextInput :id="controlId" v-model="email" type="email" :invalid="invalid" :describedby="describedby" />
+</FormField>
+```
+
 ## Components
 
 | Component                 | Purpose                                                                                                                                    |
@@ -423,7 +439,7 @@ Every visual rule in the shipped stylesheet keys on a `--ui-*` custom property �
 
 The variable surface groups into:
 
-- **Field / label** — `--ui-field-gap`, `--ui-field-margin`, `--ui-label-color`, `--ui-label-size`, `--ui-label-weight`, `--ui-label-transform`, `--ui-label-tracking`
+- **Field / label** — `--ui-field-gap`, `--ui-field-margin`, `--ui-field-label-width`, `--ui-field-label-align`, `--ui-label-color`, `--ui-label-size`, `--ui-label-weight`, `--ui-label-transform`, `--ui-label-tracking`
 - **Pressable** (`Pressable` + the `Disclosure` trigger) — `--ui-pressable-gap`, `--ui-pressable-pad`, `--ui-pressable-min-height`, `--ui-pressable-bg`, `--ui-pressable-text`, `--ui-pressable-font-size`, `--ui-pressable-line-height`, `--ui-pressable-border-width`, `--ui-pressable-border-color`, `--ui-pressable-radius`, `--ui-pressable-text-disabled`, `--ui-pressable-bg-pressed`, `--ui-pressable-text-pressed`; plus `--ui-disclosure-panel-pad` / `--ui-disclosure-panel-gap`
 - **Control** (inputs + select triggers) — `--ui-control-bg`, `--ui-control-text`, `--ui-control-text-muted`, `--ui-control-border-width`, `--ui-control-border-color`, `--ui-control-border-open`, `--ui-control-radius`, `--ui-control-pad-x`, `--ui-control-pad-y`, `--ui-control-shadow`, `--ui-control-shadow-hover`, `--ui-control-bg-disabled`, `--ui-focus-ring`, `--ui-control-font-size`, `--ui-control-line-height`, `--ui-control-min-height`
 - **Listbox menu** — `--ui-menu-bg`, `--ui-menu-border-width`, `--ui-menu-border-color`, `--ui-menu-radius`, `--ui-menu-pad`, `--ui-menu-shadow`, `--ui-menu-max-height`, `--ui-menu-min-width`, `--ui-menu-max-width`, `--ui-menu-font-size`
