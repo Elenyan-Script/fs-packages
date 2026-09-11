@@ -174,6 +174,22 @@ describe('GroupSelect', () => {
         expect(headerIds.every((id) => id === undefined)).toBe(true);
     });
 
+    it('closing via trigger click resets pointer so reopening has no stale aria-activedescendant', async () => {
+        const wrapper = mountGroupSelect({});
+        const root = wrapper.find('.ui-groupselect');
+        const button = wrapper.find('button');
+
+        await root.trigger('keydown', {key: 'ArrowDown'}); // open
+        await root.trigger('keydown', {key: 'ArrowDown'}); // → index 0 (Mango)
+        expect(button.attributes('aria-activedescendant')).toBe('fruit-opt-0');
+
+        await button.trigger('click'); // close via toggle
+        expect(groupMenu(wrapper).exists()).toBe(false);
+
+        await button.trigger('click'); // reopen via toggle
+        expect(button.attributes('aria-activedescendant')).toBeUndefined();
+    });
+
     it('aria-selected marks the committed option, not the hovered one', async () => {
         const wrapper = mountGroupSelect({modelValue: 1}); // Mango
         await wrapper.find('button').trigger('click');

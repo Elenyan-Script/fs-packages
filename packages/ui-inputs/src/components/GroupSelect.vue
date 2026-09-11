@@ -221,6 +221,10 @@ const {
 });
 
 const toggle = () => {
-    open.value = !open.value;
+    if (open.value) {
+        close();
+    } else {
+        open.value = true;
+    }
 };
 </script>
