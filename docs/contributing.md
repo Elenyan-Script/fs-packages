@@ -229,6 +229,8 @@ The flow:
 
 There is no changeset bot and no "Version Packages" intermediate PR. Version bumps are author-managed in the source PR; the publish step reacts to whatever shipped on `main`.
 
+**A NEW package cannot be created by this lane.** OIDC Trusted Publishing publishes new versions of packages that already exist on npm; the first version of a new package is hand-published with a token and the Trusted Publisher grant is attached afterwards, or every CI publish of that package fails `E404` (npm masks "no publish permission" as not-found) and takes the whole `changeset publish` step red with it. The exact order is in `CLAUDE.md` § add-a-package, step 7.
+
 ### The approval gate holds indefinitely — and that is fine
 
 `publish` does not run until a human approves the `npm-publish` environment. There is **no time limit** on that approval: a run can sit `waiting` for minutes, or for weeks. Releases here routinely wait hours.
