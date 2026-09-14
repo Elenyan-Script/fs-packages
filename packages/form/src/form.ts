@@ -3,6 +3,7 @@ import type {HttpService} from '@script-development/fs-http';
 import type {UseForm, UseFormOptions} from './types';
 
 import {useFormSubmit} from './form-submit';
+import {useScrollToFirstError} from './scroll-to-first-error';
 import {useValidationErrors} from './validation-errors';
 
 /**
@@ -18,14 +19,17 @@ import {useValidationErrors} from './validation-errors';
  * validation-less confirm action).
  *
  * @param httpService the fs-http service whose 422 responses to observe.
- * @param options     `keyMapper` remaps raw backend field keys (default identity).
+ * @param options     `keyMapper`, `scrollToError`, `scrollRoot`, `scrollTarget` — see `UseFormOptions`.
  */
 export const useForm = <T extends string = string>(
     httpService: HttpService,
     options: UseFormOptions = {},
 ): UseForm<T> => {
+    const {scrollToError = false, scrollRoot, scrollTarget} = options;
     const validation = useValidationErrors<T>(httpService, options);
     const {handleSubmit, submitting} = useFormSubmit(validation);
+
+    if (scrollToError) useScrollToFirstError(validation.errors, scrollRoot, scrollTarget);
 
     return {errors: validation.errors, clearErrors: validation.clearErrors, handleSubmit, submitting};
 };

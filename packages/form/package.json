@@ -1,6 +1,6 @@
 {
     "name": "@script-development/fs-form",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "Reactive form-submit helpers: double-submit guard plus 422 validation-error binding for fs-http",
     "homepage": "https://packages.script.nl/packages/form",
     "license": "MIT",
