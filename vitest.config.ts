@@ -12,6 +12,7 @@ import {defineConfig} from 'vitest/config';
 const PACKAGE_THRESHOLDS = Object.fromEntries(
     [
         'adapter-store',
+        'auth',
         'cached-adapter-store',
         'cloudflare',
         'dialog',
