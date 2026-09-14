@@ -67,6 +67,8 @@ A body `parseUser` refuses is an **outage, never signed out**. Rendering a broke
 
 `GET endpoints.me`, then writes the machine. Concurrent calls are ordered by a read epoch: a superseded response writes nothing and never reaches `parseUser`, so two navigations in a row cannot leave the older answer standing under the newer URL.
 
+**Ending a session stales every read issued before it.** A `me` still in flight when `logout()` succeeds or the session expires commits nothing when it lands — it cannot hand back guarded access on the strength of an answer that predates the sign-out. Reads issued _after_ the end are untouched, so signing back in works normally.
+
 A **401 or 419 on a session that was `authenticated`** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}` and no `returnTo` (`loadSession` does not know where the person is). From any other state the same status writes `signed_out` and fires nothing — arriving at a login screen is not an event.
 
 ### `login(credentials)`

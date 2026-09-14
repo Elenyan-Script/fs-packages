@@ -77,12 +77,27 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
      */
     let issued = 0;
 
+    /** Take the next ticket, making every read issued before this one stale. */
+    const nextEpoch = (): number => {
+        issued += 1;
+
+        return issued;
+    };
+
     /*
      * `state` and `user` are written together, always. Writing one without the
      * other leaves the previous identity readable behind a signed-out machine —
      * the shell keeps rendering a name for a session that is gone.
+     *
+     * And the epoch advances BEFORE either write. A `me` already in flight when
+     * the session ended would otherwise still hold a live ticket, land afterwards
+     * and commit `authenticated` over a session the server has closed — handing
+     * back guarded access on the strength of an answer that predates the sign-out
+     * (DECISIONS D15; lokalekeuze ruled the same shape as LK-0291 rule 2).
      */
     const clearSession = (): void => {
+        nextEpoch();
+
         state.value = 'signed_out';
         user.value = undefined;
     };
@@ -106,9 +121,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
     };
 
     const runLoadSession = async (): Promise<MeOutcome> => {
-        issued += 1;
-
-        const ticket = issued;
+        const ticket = nextEpoch();
 
         let response: {data: unknown; status: number};
 

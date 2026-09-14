@@ -714,6 +714,90 @@ describe('createSessionStore', () => {
         });
     });
 
+    describe('a session that has ended cannot be revived by a read that predates it', () => {
+        /**
+         * Hands back a store with a `me` in flight and a hook to answer it. The
+         * answer is a GOOD one — an authenticating body — because the hazard is
+         * precisely that a valid answer from before the sign-out reinstates
+         * guarded access after it.
+         */
+        const startPendingLoad = (store: SessionStore<Employer, Credentials>) => {
+            let answerPendingMe = (): void => undefined;
+            vi.mocked(http.getRequest).mockReturnValueOnce(
+                new Promise((resolve) => {
+                    answerPendingMe = () => resolve(respondWith({id: 7}));
+                }),
+            );
+
+            return {pending: store.loadSession(), answerPendingMe};
+        };
+
+        it('discards a me still in flight when logout succeeds', async () => {
+            const store = build();
+            await signIn(store);
+            const ended = vi.fn();
+            store.onSessionEnd(ended);
+            const {pending, answerPendingMe} = startPendingLoad(store);
+            vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+            await store.logout();
+            answerPendingMe();
+            await pending;
+
+            expect(store.state.value).toBe('signed_out');
+            expect(store.user.value).toBeUndefined();
+            expect(store.isAuthenticated.value).toBe(false);
+            expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'logout'});
+        });
+
+        it('discards a me still in flight when the session expires', async () => {
+            const store = build();
+            await signIn(store);
+            const ended = vi.fn();
+            store.onSessionEnd(ended);
+            const {pending, answerPendingMe} = startPendingLoad(store);
+
+            store.handleSessionExpired('/employers/7');
+            answerPendingMe();
+            await pending;
+
+            expect(store.state.value).toBe('signed_out');
+            expect(store.user.value).toBeUndefined();
+            expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired', returnTo: '/employers/7'});
+        });
+
+        it('still commits a read issued AFTER the session ended', async () => {
+            const store = build();
+            await signIn(store);
+            vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+            await store.logout();
+            expect(store.state.value).toBe('signed_out');
+
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith({id: 9}));
+            await store.loadSession();
+
+            // Signing back in is legitimate; the rule stales reads issued BEFORE
+            // the end, never the ones issued after it.
+            expect(store.state.value).toBe('authenticated');
+            expect(store.user.value).toEqual({id: 9});
+        });
+
+        it('still lets login re-establish a session it just ended', async () => {
+            const store = build();
+            await signIn(store);
+            vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+            await store.logout();
+
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith({id: 9}));
+            const outcome = await store.login({email: 'a@b.test', password: 'x'});
+
+            expect(outcome).toEqual({kind: 'authenticated'});
+            expect(store.user.value).toEqual({id: 9});
+        });
+    });
+
     describe('request options', () => {
         const credentials: Credentials = {email: 'a@b.test', password: 'x'};
 

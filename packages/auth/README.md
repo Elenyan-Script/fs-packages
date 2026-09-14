@@ -46,6 +46,9 @@ export const session = createSessionStore<Employer>({
 - **`state` and `user` move together.** Every sign-out clears the user and,
   where a live session actually ended, fires `onSessionEnd` exactly once. An
   `outage` keeps the user — an outage is not a sign-out.
+- **Ending a session stales every read issued before it.** A `me` still in
+  flight when the session ends commits nothing; it cannot revive what the
+  server has closed.
 - **The package fires; you navigate.** `onSessionEnd` gives you the event. This
   package registers no navigation and owns no sink.
 

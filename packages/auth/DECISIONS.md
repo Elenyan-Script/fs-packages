@@ -208,3 +208,37 @@ can keep naming it behind a notice. Clearing it would render a broken API as a
 sign-out by another route — the exact substitution the `outage` state exists to
 prevent. `isAuthenticated` is false throughout, and `setUser` throws, so nothing
 can mistake a retained name for a live session.
+
+## D15 — Ending a session stales every read issued before it
+
+_Fix round 2, 2026-09-14._
+
+A session that has ended must not be revived by an answer that predates its
+ending. Before this, `clearSession` wrote the machine and left the read epoch
+alone, so a `loadSession()` already in flight still held a live ticket:
+
+1. `loadSession()` takes ticket 1 and awaits `me`.
+2. `logout()` succeeds — state `signed_out`, user cleared, listeners told.
+3. The ticket-1 `me` answers 200 with a good body. Its ticket is still current,
+   `parseUser` succeeds, and the store writes `authenticated` with the user back.
+
+The consumer regains guarded access on a session the server has closed, on the
+strength of an answer that was already stale when it arrived — and nothing
+anywhere is in an error state, which is ADR-0048's failure mode exactly. The
+expiry path had the same hole, and there it is worse: `handleSessionExpired`
+runs synchronously inside fs-http's error loop, so a concurrent `me` is the
+likeliest thing in the world to be in flight at that moment.
+
+`clearSession` now advances the epoch **before** it writes, so every read issued
+earlier is stale when it lands. Both ending paths route through it, which is why
+the rule attaches there rather than to `endSession`: the bare-clear path (a 401
+arriving when no session was live) needs it just as much.
+
+Reads issued **after** the end are untouched and still commit — signing back in
+is legitimate, and both `loadSession()` and `login()`'s confirming read take
+their ticket at the moment they run. Spec'd in both directions, because a rule
+that staled those too would be a worse bug than the one it fixed.
+
+Seed: lokalekeuze ruled this shape as **LK-0291 rule 2** — _"the slot is
+invalidated BEFORE the write"_ (`apps/employer/domains/auth/stores/session.ts`,
+`logout()`). Same hazard, same ordering, arrived at independently there first.
