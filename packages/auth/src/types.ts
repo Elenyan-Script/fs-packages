@@ -7,6 +7,14 @@ import type {ComputedRef, Ref} from 'vue';
  * an API saying the session is over, and rendering the first as the second
  * invites a password that would have worked a minute earlier (ADR-0050 § 3).
  */
+/**
+ * The per-request options object an fs-http verb accepts, taken from fs-http's
+ * own signature rather than named from axios — the monorepo routes sibling types
+ * through fs-http's re-exports, and a direct axios import breaks rolldown's
+ * `d.cts` emission on a dual bundle.
+ */
+export type RequestOptions = NonNullable<Parameters<HttpService['getRequest']>[1]>;
+
 export type SessionState = 'loading' | 'authenticated' | 'signed_out' | 'outage';
 
 export interface SessionEndpoints {

@@ -10,6 +10,7 @@ export type {
     CreateSessionStoreConfig,
     LoginOutcome,
     LogoutOutcome,
+    RequestOptions,
     SessionEndEvent,
     SessionEndpoints,
     SessionExpiryHandler,

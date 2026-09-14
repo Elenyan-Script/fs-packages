@@ -36,13 +36,23 @@ const build = (overrides: Partial<Parameters<typeof createSessionStore<Employer,
         ...overrides,
     });
 
-/** Every request this package makes carries the configured timeout (principle 8). */
-const expectEveryRequestTimed = (): void => {
+/** What a store with no `csrf` block sends: the timeout and nothing else. */
+const PLAIN_OPTIONS = {timeout: TIMEOUT_MS};
+
+/**
+ * What a `csrf`-configured store sends. `withXSRFToken` is the load-bearing one:
+ * fs-http's own default is `false`, so without it the primed cookie is never
+ * forwarded and the prime accomplishes nothing.
+ */
+const CSRF_OPTIONS = {timeout: TIMEOUT_MS, withCredentials: true, withXSRFToken: true};
+
+/** Every request this package makes carries the same options object — no exceptions, no drift. */
+const expectEveryRequestUses = (options: object): void => {
     const calls = [...vi.mocked(http.getRequest).mock.calls, ...vi.mocked(http.postRequest).mock.calls];
 
     expect(calls.length).toBeGreaterThan(0);
 
-    for (const call of calls) expect(call.at(-1)).toEqual({timeout: TIMEOUT_MS});
+    for (const call of calls) expect(call.at(-1)).toEqual(options);
 };
 
 const signIn = async (store: SessionStore<Employer, Credentials>): Promise<void> => {
@@ -74,7 +84,7 @@ describe('createSessionStore', () => {
 
             await store.loadSession();
 
-            expect(vi.mocked(http.getRequest)).toHaveBeenCalledWith('auth/employer/me', {timeout: TIMEOUT_MS});
+            expect(vi.mocked(http.getRequest)).toHaveBeenCalledWith('auth/employer/me', PLAIN_OPTIONS);
             expect(store.state.value).toBe('authenticated');
             expect(store.user.value).toEqual({id: 7});
             expect(store.isAuthenticated.value).toBe(true);
@@ -128,13 +138,102 @@ describe('createSessionStore', () => {
             expect(store.state.value).toBe('outage');
         });
 
-        it('reads a non-axios rejection as an outage', async () => {
+        it('retains the user on an outage — an outage is not a sign-out', async () => {
             const store = build();
-            vi.mocked(http.getRequest).mockRejectedValue(new Error('boom'));
+            await signIn(store);
+            vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(500));
 
             await store.loadSession();
 
             expect(store.state.value).toBe('outage');
+            expect(store.user.value).toEqual({id: 7});
+        });
+
+        it('propagates a non-axios rejection instead of classifying a defect as an outage', async () => {
+            const store = build();
+            const defect = new Error('a fault in something that is not the transport');
+            vi.mocked(http.getRequest).mockRejectedValue(defect);
+
+            await expect(store.loadSession()).rejects.toBe(defect);
+            expect(store.state.value).toBe('loading');
+        });
+
+        it('propagates a throwing parseUser and writes no state', async () => {
+            const defect = new TypeError('the consumer guard itself is broken');
+            const store = build({
+                parseUser: () => {
+                    throw defect;
+                },
+            });
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith({id: 7}));
+
+            await expect(store.loadSession()).rejects.toBe(defect);
+            expect(store.state.value).toBe('loading');
+            expect(store.user.value).toBeUndefined();
+        });
+
+        it('never runs parseUser for a superseded response, so its defect cannot fire late', async () => {
+            const parseUser = vi.fn(isEmployer);
+            const store = build({parseUser});
+            let releaseFirst = (): void => undefined;
+            vi.mocked(http.getRequest)
+                .mockReturnValueOnce(
+                    new Promise((resolve) => {
+                        releaseFirst = () => resolve(respondWith({id: 1}));
+                    }),
+                )
+                .mockResolvedValueOnce(respondWith({id: 2}));
+
+            const first = store.loadSession();
+            const second = store.loadSession();
+
+            await second;
+            releaseFirst();
+            await first;
+
+            expect(parseUser).toHaveBeenCalledExactlyOnceWith({id: 2});
+        });
+
+        describe('a 401 on a LIVE session is an expiry', () => {
+            it('clears the user and fires exactly one session-end event', async () => {
+                const store = build();
+                await signIn(store);
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(401));
+
+                await store.loadSession();
+
+                expect(store.state.value).toBe('signed_out');
+                expect(store.user.value).toBeUndefined();
+                expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired', returnTo: undefined});
+            });
+
+            it('absorbs a handleSessionExpired arriving behind it', async () => {
+                const store = build();
+                await signIn(store);
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(401));
+
+                await store.loadSession();
+                store.handleSessionExpired('/employers/7');
+
+                expect(ended).toHaveBeenCalledOnce();
+            });
+
+            it('fires nothing when there was no session to end', async () => {
+                const store = build();
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(401));
+
+                await store.loadSession();
+
+                expect(store.state.value).toBe('signed_out');
+                expect(store.user.value).toBeUndefined();
+                expect(ended).not.toHaveBeenCalled();
+            });
         });
 
         it('discards a superseded response rather than letting the older answer land last', async () => {
@@ -193,10 +292,8 @@ describe('createSessionStore', () => {
             const outcome = await store.login(credentials);
 
             expect(outcome).toEqual({kind: 'authenticated'});
-            expect(vi.mocked(http.postRequest)).toHaveBeenCalledWith('auth/employer/login', credentials, {
-                timeout: TIMEOUT_MS,
-            });
-            expectEveryRequestTimed();
+            expect(vi.mocked(http.postRequest)).toHaveBeenCalledWith('auth/employer/login', credentials, PLAIN_OPTIONS);
+            expectEveryRequestUses(PLAIN_OPTIONS);
         });
 
         it('refuses with the me status when the login succeeded but me did not authenticate', async () => {
@@ -232,13 +329,43 @@ describe('createSessionStore', () => {
             expect(store.state.value).toBe('loading');
         });
 
-        it('refuses a non-axios rejection with no status and no body', async () => {
+        it('refuses a transport failure, which is an answer that never arrived', async () => {
             const store = build();
-            vi.mocked(http.postRequest).mockRejectedValue(new Error('boom'));
+            vi.mocked(http.postRequest).mockRejectedValue(axiosRejection(undefined));
 
             const outcome = await store.login(credentials);
 
             expect(outcome).toEqual({kind: 'refused', status: undefined, body: undefined});
+        });
+
+        it('propagates a non-axios rejection rather than showing a defect as a refusal', async () => {
+            const store = build();
+            const defect = new Error('a fault in something that is not the transport');
+            vi.mocked(http.postRequest).mockRejectedValue(defect);
+
+            await expect(store.login(credentials)).rejects.toBe(defect);
+        });
+
+        it('propagates a non-axios rejection from the stale-token retry too', async () => {
+            const store = build({csrf: {primeUrl: PRIME_URL}});
+            const defect = new Error('a fault in something that is not the transport');
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith(''));
+            vi.mocked(http.postRequest).mockRejectedValueOnce(axiosRejection(419)).mockRejectedValueOnce(defect);
+
+            await expect(store.login(credentials)).rejects.toBe(defect);
+        });
+
+        it('propagates a throwing parseUser reached through the login path', async () => {
+            const defect = new TypeError('the consumer guard itself is broken');
+            const store = build({
+                parseUser: () => {
+                    throw defect;
+                },
+            });
+            vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith({id: 7}));
+
+            await expect(store.login(credentials)).rejects.toBe(defect);
         });
 
         it('returns the challenge body without touching the machine', async () => {
@@ -274,8 +401,8 @@ describe('createSessionStore', () => {
 
                 await store.login(credentials);
 
-                expect(vi.mocked(http.getRequest).mock.calls[0]).toEqual([PRIME_URL, {timeout: TIMEOUT_MS}]);
-                expectEveryRequestTimed();
+                expect(vi.mocked(http.getRequest).mock.calls[0]).toEqual([PRIME_URL, CSRF_OPTIONS]);
+                expectEveryRequestUses(CSRF_OPTIONS);
             });
 
             it('re-primes and retries exactly once on a stale token', async () => {
@@ -329,6 +456,17 @@ describe('createSessionStore', () => {
                 expect(vi.mocked(http.postRequest)).toHaveBeenCalledOnce();
             });
 
+            it('refuses a transport failure without asking it for a status it has not got', async () => {
+                const store = build({csrf: {primeUrl: PRIME_URL}});
+                vi.mocked(http.getRequest).mockResolvedValue(respondWith(''));
+                vi.mocked(http.postRequest).mockRejectedValue(axiosRejection(undefined));
+
+                const outcome = await store.login(credentials);
+
+                expect(outcome).toEqual({kind: 'refused', status: undefined, body: undefined});
+                expect(vi.mocked(http.postRequest)).toHaveBeenCalledOnce();
+            });
+
             it('refuses a failed prime rather than posting behind it', async () => {
                 const store = build({csrf: {primeUrl: PRIME_URL}});
                 vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(500));
@@ -362,7 +500,7 @@ describe('createSessionStore', () => {
             const outcome = await store.logout();
 
             expect(outcome).toEqual({kind: 'signed_out'});
-            expect(vi.mocked(http.postRequest)).toHaveBeenCalledWith('auth/employer/logout', {}, {timeout: TIMEOUT_MS});
+            expect(vi.mocked(http.postRequest)).toHaveBeenCalledWith('auth/employer/logout', {}, PLAIN_OPTIONS);
             expect(store.state.value).toBe('signed_out');
             expect(store.user.value).toBeUndefined();
             expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'logout'});
@@ -376,7 +514,7 @@ describe('createSessionStore', () => {
 
             await store.logout();
 
-            expect(vi.mocked(http.getRequest)).toHaveBeenCalledWith(PRIME_URL, {timeout: TIMEOUT_MS});
+            expect(vi.mocked(http.getRequest)).toHaveBeenCalledWith(PRIME_URL, CSRF_OPTIONS);
         });
 
         it('leaves the session standing when the request fails, and reports the failure', async () => {
@@ -403,6 +541,32 @@ describe('createSessionStore', () => {
             await store.logout();
 
             expect(vi.mocked(http.getRequest)).not.toHaveBeenCalled();
+        });
+
+        it('answers `failed` with no status when nothing answered at all', async () => {
+            const store = build();
+            await signIn(store);
+            vi.mocked(http.postRequest).mockRejectedValue(axiosRejection(undefined));
+
+            const outcome = await store.logout();
+
+            expect(outcome).toEqual({kind: 'failed', status: undefined, body: undefined});
+            expect(store.state.value).toBe('authenticated');
+        });
+
+        it("still answers `failed` for a rejection that is not the transport's", async () => {
+            // Ruling 1 says ANY failure leaves the session standing and answers
+            // `failed`. Logout does not sort defects out of that, unlike login:
+            // the person pressed a thing and needs to know whether to press again,
+            // and a throw here would strand the shell mid-sign-out (DECISIONS D13).
+            const store = build();
+            await signIn(store);
+            vi.mocked(http.postRequest).mockRejectedValue(new Error('a fault that is not the transport'));
+
+            const outcome = await store.logout();
+
+            expect(outcome).toEqual({kind: 'failed', status: undefined, body: undefined});
+            expect(store.state.value).toBe('authenticated');
         });
 
         it('reports a failed prime as a failed logout', async () => {
@@ -547,6 +711,38 @@ describe('createSessionStore', () => {
             store.handleSessionExpired();
 
             expect(ended).toHaveBeenCalledOnce();
+        });
+    });
+
+    describe('request options', () => {
+        const credentials: Credentials = {email: 'a@b.test', password: 'x'};
+
+        it('forwards credentials and the XSRF token on EVERY request a primed store makes', async () => {
+            const store = build({csrf: {primeUrl: PRIME_URL}});
+            vi.mocked(http.getRequest).mockResolvedValueOnce(respondWith(''));
+            vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith({id: 7}));
+
+            await store.login(credentials);
+            await store.logout();
+            await store.loadSession();
+
+            // The prime, the login POST, the confirming me, the logout POST and the
+            // final me — all of them, not most of them.
+            expect(vi.mocked(http.getRequest).mock.calls.length).toBeGreaterThanOrEqual(3);
+            expect(vi.mocked(http.postRequest).mock.calls.length).toBeGreaterThanOrEqual(2);
+            expectEveryRequestUses(CSRF_OPTIONS);
+        });
+
+        it('overrides nothing on a store that configured no csrf', async () => {
+            const store = build();
+            vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+            vi.mocked(http.getRequest).mockResolvedValue(respondWith({id: 7}));
+
+            await store.login(credentials);
+            await store.logout();
+
+            expectEveryRequestUses(PLAIN_OPTIONS);
         });
     });
 

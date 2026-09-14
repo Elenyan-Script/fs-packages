@@ -43,6 +43,9 @@ export const session = createSessionStore<Employer>({
   it on the event; your exit writes it under your own query name.
 - **`user` is readonly outward.** `setUser(next)` is the one writer, and it
   throws while the session is not authenticated.
+- **`state` and `user` move together.** Every sign-out clears the user and,
+  where a live session actually ended, fires `onSessionEnd` exactly once. An
+  `outage` keeps the user — an outage is not a sign-out.
 - **The package fires; you navigate.** `onSessionEnd` gives you the event. This
   package registers no navigation and owns no sink.
 
@@ -54,6 +57,14 @@ export const session = createSessionStore<Employer>({
   its consumer's sink, so it does not pretend to own one.
 - **No 2FA, OAuth, impersonation, permissions or inactivity timers.** A login
   that defers comes back as `{kind: 'challenge', body}` and you interpret it.
-- **It creates no HTTP service and no router.** Both are injected.
+- **It creates no HTTP service and no router.** Both are injected. A store with
+  no `csrf` block overrides none of the injected service's configuration; one
+  **with** a `csrf` block forwards `withCredentials` and `withXSRFToken` on
+  every request, because fs-http's own default would otherwise drop the token it
+  just primed.
+- **It does not swallow your defects.** A throwing `parseUser`, or any rejection
+  that is not an HTTP answer, propagates out of `loadSession()` and `login()`
+  rather than becoming an `outage` or a refusal. `logout()` is the one exception
+  and answers `failed` for everything.
 
 Decisions and their costs: `DECISIONS.md` in this package.

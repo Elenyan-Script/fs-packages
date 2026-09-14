@@ -49,6 +49,8 @@ Four states, and the store is their only writer.
 
 A body `parseUser` refuses is an **outage, never signed out**. Rendering a broken API as "please sign in" invites a password that would have worked a minute earlier.
 
+`state` and `user` are always written together. Every move into `signed_out` clears `user`; `outage` **retains** it, because an outage is not a sign-out and a shell may keep naming the person behind a notice. `isAuthenticated` is false in both, and `setUser` throws in both.
+
 ## `createSessionStore(config)`
 
 | Option        | Type                                    | Notes                                                                                                       |
@@ -63,7 +65,9 @@ A body `parseUser` refuses is an **outage, never signed out**. Rendering a broke
 
 ### `loadSession()`
 
-`GET endpoints.me`, then writes the machine. Concurrent calls are ordered by a read epoch: a superseded response writes nothing, so two navigations in a row cannot leave the older answer standing under the newer URL.
+`GET endpoints.me`, then writes the machine. Concurrent calls are ordered by a read epoch: a superseded response writes nothing and never reaches `parseUser`, so two navigations in a row cannot leave the older answer standing under the newer URL.
+
+A **401 or 419 on a session that was `authenticated`** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}` and no `returnTo` (`loadSession` does not know where the person is). From any other state the same status writes `signed_out` and fires nothing — arriving at a login screen is not an event.
 
 ### `login(credentials)`
 
@@ -82,7 +86,7 @@ showRefusal(outcome.status, outcome.body); // your copy, your call
 - `{kind: 'challenge', body}` — the login answered without establishing a session (a 2FA step, say). **No state change**, and no `sessionEnd` event. You interpret `body`.
 - `{kind: 'refused', status, body}` — everything else, including a `me` that did not authenticate afterwards.
 
-A rejection that is not an HTTP answer — a thrown `parseUser`, a programming error — propagates. That is a defect, not an outcome.
+A rejection that is not an HTTP answer — a thrown `parseUser`, a programming error — **propagates out of `login()` and `loadSession()`**. That is a defect, not an outcome, and dressing it as `refused` would show a wrong-password screen for a fault nobody would ever read. `logout()` is the deliberate exception; see below.
 
 ### `logout()`
 
@@ -93,6 +97,8 @@ if (outcome.kind === 'failed') showRetryable(); // the session is still live
 ```
 
 The machine moves to `signed_out` on **success only**, and nothing probes the server behind a failure. A cookie the server still honours must never be reported as gone.
+
+Unlike `login()`, `logout()` answers `failed` for **every** failure, a defect included — it never throws. A throw here would strand a shell mid-sign-out with the session still live and nothing to render, and the only question the person can act on is whether to press again.
 
 ### `handleSessionExpired(returnTo?)`
 
@@ -169,7 +175,11 @@ csrf: {primeUrl: `${globalThis.location.origin}/sanctum/csrf-cookie`},
 
 The URL is absolute because Sanctum's cookie route lives at the app root, not under the API base. The prime is memoised **per store** — two stores on one page prime two guards and never share a slot — and a failed prime is forgotten so the next call retries.
 
-`createCsrfPrimer(http, primeUrl, timeoutMs)` is exported for a consumer that needs the same memo outside a store.
+**Configuring `csrf` changes what every request carries.** `createHttpService` defaults `withXSRFToken` to `false`, so a store that primed a cookie and then sent the service's defaults would forward nothing and draw the 419 the prime existed to prevent. A `csrf`-configured store therefore sends `{timeout, withCredentials: true, withXSRFToken: true}` on **every** request it makes, the prime included — the credentials flag because the prime itself must be allowed to store the cookie across the origin boundary.
+
+A store with **no** `csrf` block overrides nothing and uses the injected service's own configuration. It has claimed nothing about the origin boundary, so the package decides nothing for it.
+
+`createCsrfPrimer(http, primeUrl, options)` is exported for a consumer that needs the same memo outside a store. `options` is the per-request config passed through verbatim; a caller priming across an origin boundary owes it `withCredentials`.
 
 ## What Stays Yours
 
