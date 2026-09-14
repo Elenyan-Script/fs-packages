@@ -45,7 +45,7 @@
         "string-ts": "^2.3.1"
     },
     "devDependencies": {
-        "happy-dom": "^20.14.0"
+        "happy-dom": "^20.14.3"
     },
     "engines": {
         "node": ">=24.0.0"
