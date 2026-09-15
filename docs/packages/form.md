@@ -71,6 +71,36 @@ const {errors, submitting, handleSubmit} = useForm<Field>(http, {keyMapper: came
 The two source territories diverged on exactly one axis: one camelCased the error keys, the other used them raw. `keyMapper` (default identity) is the single injection point that absorbs that divergence, so the package fits both without forking.
 :::
 
+## Scroll to the First Error
+
+Pass `scrollToError` and a 422 scrolls the first invalid field into view, so the user lands on the first thing to fix. It targets the first `[aria-invalid="true"]` element and calls `scrollIntoView({block: 'center'})` after the mark is painted. It is **off by default**, and every example below has to opt in. `useForm` derives no ids and marks no fields itself, so it is also **inert unless the presentation layer marks the errored control** — `@script-development/ui-inputs` renders `aria-invalid` from `:invalid` out of the box.
+
+```typescript
+useForm<Field>(http); // no scroll — the default
+useForm<Field>(http, {scrollToError: true, scrollRoot}); // opt in, scoped to your form
+```
+
+**Reduced motion is honoured.** The scroll is `behavior: 'smooth'`, except under `prefers-reduced-motion: reduce`, where it falls back to `'auto'` — a JS `scrollIntoView` behavior is not subject to the CSS media query, so it is checked explicitly.
+
+**Marks with a class instead of `aria-invalid`?** Point `scrollTarget` at your own selector:
+
+```typescript
+useForm<Field>(http, {scrollToError: true, scrollTarget: '.field-error'});
+```
+
+### Forms that share a page
+
+Without `scrollRoot` the query is **document-wide** — the first matching element in document order — which is right for a single form. When forms share a page, pass each form's root as `scrollRoot`:
+
+```typescript
+const formEl = ref<HTMLElement | null>(null);
+useForm<Field>(http, {scrollToError: true, scrollRoot: formEl}); // scopes the scroll to formEl's subtree
+```
+
+`scrollRoot` is **required** for a dialog opened over a page form on the same `HttpService`. A 422 fills every such form's error bag (see [Scoping & Backend Contract](#scoping--backend-contract) below), so both forms mark their fields; a document-wide query then scrolls to whichever comes first in document order — often the _page's_ field, behind the backdrop, not the dialog's. Scope each form with `scrollRoot`, or give concurrently-mounted forms separate `HttpService` instances.
+
+`useValidationErrors` never scrolls (the DOM-free primitive), and `useForm` does not either unless `scrollToError` is passed. A consumer that already scrolls on error simply leaves it off.
+
 ## Composing the Primitives
 
 `useForm` is `useValidationErrors` + `useFormSubmit` wired together. Reach for the primitives directly when you want one half without the other — e.g. a validation-less confirm action needs the submit guard but no 422 middleware:
@@ -106,10 +136,13 @@ const {handleSubmit, submitting} = useFormSubmit(validation);
 
 The one-call entry point. Returns everything from both primitives.
 
-| Parameter           | Type                      | Description                                          |
-| ------------------- | ------------------------- | ---------------------------------------------------- |
-| `httpService`       | `HttpService`             | The `fs-http` service whose 422 responses to observe |
-| `options.keyMapper` | `(key: string) => string` | Remaps raw backend field keys (default: identity)    |
+| Parameter               | Type                       | Description                                                                                                                                                   |
+| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `httpService`           | `HttpService`              | The `fs-http` service whose 422 responses to observe                                                                                                          |
+| `options.keyMapper`     | `(key: string) => string`  | Remaps raw backend field keys (default: identity)                                                                                                             |
+| `options.scrollToError` | `boolean`                  | Scroll the first invalid field into view on a 422 (default: `false`; pass `scrollRoot` with it — see [Scroll to the First Error](#scroll-to-the-first-error)) |
+| `options.scrollRoot`    | `Ref<HTMLElement \| null>` | Scope the `scrollToError` query to a form's subtree; omit for document-wide (see [Scroll to the First Error](#scroll-to-the-first-error))                     |
+| `options.scrollTarget`  | `string`                   | Selector for the invalid-field mark (default `[aria-invalid="true"]`); pass your own when inputs mark errors with a class                                     |
 
 **Returns:**
 
@@ -122,7 +155,7 @@ The one-call entry point. Returns everything from both primitives.
 
 ### `useValidationErrors(httpService, options?)`
 
-Primitive: registers the 422 middleware and owns the error bag. Same `httpService` / `options` as `useForm`; returns `{errors, clearErrors}`.
+Primitive: registers the 422 middleware and owns the error bag. Takes the same `httpService` and the same `keyMapper`, but **none of the scroll options** — only `useForm` installs the scroll. Returns `{errors, clearErrors}`.
 
 ### `useFormSubmit(validationErrors)`
 

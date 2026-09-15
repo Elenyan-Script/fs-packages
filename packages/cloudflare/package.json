@@ -1,6 +1,6 @@
 {
     "name": "@script-development/fs-cloudflare",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Express-compatible middleware gating inbound traffic to Cloudflare's egress ranges",
     "homepage": "https://packages.script.nl/packages/cloudflare",
     "license": "MIT",
@@ -42,7 +42,7 @@
         "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
-        "@types/node": "^26.4.1"
+        "@types/node": "^26.5.1"
     },
     "engines": {
         "node": ">=24.0.0"
