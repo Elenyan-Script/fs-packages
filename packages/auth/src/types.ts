@@ -31,6 +31,15 @@ export type LoginOutcome =
 
 export type LogoutOutcome = {kind: 'signed_out'} | {kind: 'failed'; status: number | undefined; body: unknown};
 
+/**
+ * Invoked when an `onSessionEnd` listener fails — thrown or rejected. Receives
+ * the failure and the event the listener was given. **Must not re-throw**: doing
+ * so re-opens the exact failure the swallow closes, and would cost every later
+ * listener its notice (DECISIONS D8). Parity with fs-http's
+ * `GuardedMiddlewareErrorHandler` (ADR-0037).
+ */
+export type SessionEndListenerErrorHandler = (error: unknown, event: SessionEndEvent) => void;
+
 export interface SessionEndEvent {
     reason: 'logout' | 'expired';
     returnTo?: string;
@@ -50,6 +59,11 @@ export interface CreateSessionStoreConfig<TUser> {
     timeoutMs: number;
     /** Cross-origin consumers only; a same-origin SPA cannot draw a 419 from a current browser. */
     csrf?: {primeUrl: string};
+    /**
+     * Where a failing `onSessionEnd` listener is reported. Defaults to a loud
+     * `console.error`, in the shape fs-http's `guarded()` already uses.
+     */
+    onListenerError?: SessionEndListenerErrorHandler;
 }
 
 /**
@@ -88,6 +102,12 @@ export interface SessionStore<TUser, TCredentials> extends AuthenticationState, 
     login(credentials: TCredentials): Promise<LoginOutcome>;
     logout(): Promise<LogoutOutcome>;
     handleSessionExpired(returnTo?: string): void;
-    /** @returns an unregister function. */
-    onSessionEnd(listener: (event: SessionEndEvent) => void): () => void;
+    /**
+     * A listener may be `async`: a returned promise's rejection reaches
+     * `onListenerError` exactly as a synchronous throw does. It is never awaited
+     * — ending a session is synchronous (D16).
+     *
+     * @returns an unregister function.
+     */
+    onSessionEnd(listener: (event: SessionEndEvent) => void | Promise<void>): () => void;
 }

@@ -91,8 +91,10 @@ export const registerUnauthorizedMiddleware = (
          * hand back as an outcome: a stale-token 419 on a login ends the session
          * in the middle of the retry that was going to succeed, and a refused
          * logout ends it twice over with two contradictory signals. A refused
-         * `me` is the opposite case and stays here — nobody is waiting on it,
-         * and it IS the session ending underneath somebody (DECISIONS D19).
+         * `me` is skipped for a different reason: it is judged by the store's read
+         * epoch, and this hook runs before fs-http rejects — i.e. before that
+         * check — so a STALE refusal handled here clears a session a newer read
+         * has already established (DECISIONS D19, amended).
          */
         if (store.ownsRefusalOf(error.config?.url)) return;
 

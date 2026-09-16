@@ -7,6 +7,7 @@ import type {
     CreateSessionStoreConfig,
     LoginOutcome,
     LogoutOutcome,
+    SessionEndListenerErrorHandler,
     RequestOptions,
     SessionEndEvent,
     SessionState,
@@ -29,6 +30,15 @@ interface MeOutcome {
     readonly body: unknown;
 }
 
+/**
+ * Default sink for a failing session-end listener: loud, and it does not
+ * propagate. Modelled on fs-http's `guarded()` default — the Armory already
+ * holds that a swallowed callback failure is reported by default (D8).
+ */
+const defaultOnListenerError: SessionEndListenerErrorHandler = (error, event) => {
+    console.error('[fs-auth] onSessionEnd listener failed and was swallowed:', error, event);
+};
+
 /** A read a newer one overtook. It reports nothing, because nothing of it was used. */
 const SUPERSEDED: MeOutcome = {status: undefined, body: undefined};
 
@@ -43,6 +53,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 ): SessionStore<TUser, TCredentials> => {
     const {endpoints, guard, http, parseUser, timeoutMs} = config;
     const isChallenge = config.isChallenge ?? (() => false);
+    const onListenerError = config.onListenerError ?? defaultOnListenerError;
 
     /*
      * A store that primes a CSRF cookie must forward what it primed, whatever the
@@ -62,16 +73,17 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
     const primer = config.csrf === undefined ? undefined : createCsrfPrimer(http, config.csrf.primeUrl, requestOptions);
 
     /*
-     * The requests this store makes as part of a credential exchange, and whose
-     * refusals it therefore returns to its own caller. The 401/419 hook asks for
-     * this set by URL so it can leave those alone (DECISIONS D19). `me` is
-     * deliberately absent: a refused `me` IS the session ending, with no caller
-     * waiting on an outcome.
+     * Every request this store issues. The 401/419 hook asks for this set by URL
+     * and leaves all of them alone, because each is already judged by the path
+     * that issued it: login and logout return an outcome to a caller, and `me`
+     * is judged by the read epoch — which the hook runs too early to consult, so
+     * a stale refusal reaching it would clear a session a newer read had just
+     * established (DECISIONS D19).
      */
     const ownEndpoints: ReadonlySet<string> = new Set(
         config.csrf === undefined
-            ? [endpoints.login, endpoints.logout]
-            : [endpoints.login, endpoints.logout, config.csrf.primeUrl],
+            ? [endpoints.me, endpoints.login, endpoints.logout]
+            : [endpoints.me, endpoints.login, endpoints.logout, config.csrf.primeUrl],
     );
 
     const state = ref<SessionState>('loading');
@@ -82,7 +94,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
      * entry and the first unregister silenced the other — a still-mounted
      * consumer that simply stops hearing session ends (DECISIONS D20).
      */
-    const listeners = new Set<{listener: (event: SessionEndEvent) => void}>();
+    const listeners = new Set<{listener: (event: SessionEndEvent) => void | Promise<void>}>();
 
     /*
      * The read epoch. A `me` answer writes the machine only if no later read was
@@ -148,15 +160,19 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         if (!ending) return;
 
         for (const {listener} of listeners) {
+            /*
+             * Swallowed so one failing listener cannot cost the others their
+             * notice, and REPORTED so it is not lost — a silent swallow is
+             * ADR-0048's failure mode wearing a `catch` (DECISIONS D8, reversed).
+             * `Promise.resolve` covers the async listener the `void` return type
+             * admits: its rejection never reaches this `catch`, and routing it
+             * here costs nothing synchronous, so `endSession` still returns
+             * before any listener's promise settles.
+             */
             try {
-                listener(event);
-            } catch {
-                /*
-                 * A listener's own fault is the listener's to report. Swallowing it
-                 * is in tension with ADR-0048 and is the lesser harm: this package
-                 * has no reporting channel, and one throwing listener must not cost
-                 * the others their notice that the session ended (DECISIONS D8).
-                 */
+                void Promise.resolve(listener(event)).catch((error: unknown) => onListenerError(error, event));
+            } catch (error) {
+                onListenerError(error, event);
             }
         }
     };

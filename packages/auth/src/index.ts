@@ -12,6 +12,7 @@ export type {
     LogoutOutcome,
     RequestOptions,
     SessionEndEvent,
+    SessionEndListenerErrorHandler,
     SessionEndpoints,
     SessionExpiryHandler,
     SessionState,

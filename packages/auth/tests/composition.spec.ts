@@ -148,7 +148,10 @@ describe('the store and the unauthorized hook over one real http service', () =>
         expect(sent).toEqual([credentialed]);
     });
 
-    it('leaves a refused me with the hook, which carries the return-to', async () => {
+    it('ends the session from the STORE on a refused me, so it carries no return-to', async () => {
+        // REVERSED in fix round 7 with DECISIONS D19. This used to assert the
+        // hook's event, `returnTo` included — the hook runs before fs-http
+        // rejects, which is exactly why it cannot be the judge (see below).
         const {ended, store} = build();
         mock.onGet(/\/me$/u).replyOnce(200, {id: 7});
         await store.loadSession();
@@ -156,8 +159,37 @@ describe('the store and the unauthorized hook over one real http service', () =>
 
         await store.loadSession();
 
-        expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired', returnTo: RETURN_TO});
+        expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired'});
         expect(store.state.value).toBe('signed_out');
+    });
+
+    it('discards a STALE me refusal by epoch, leaving the newer session standing', async () => {
+        const {ended, store} = build();
+        let answerStale = (): void => undefined;
+        let reads = 0;
+        mock.onGet(/\/me$/u).reply(() => {
+            reads += 1;
+
+            if (reads > 1) return [200, {id: 9}];
+
+            return new Promise((resolve) => {
+                answerStale = () => resolve([401, {}]);
+            });
+        });
+
+        const stale = store.loadSession();
+        await store.loadSession();
+        expect(store.state.value).toBe('authenticated');
+
+        answerStale();
+        await stale;
+
+        // The hook runs BEFORE fs-http rejects to `runLoadSession`, so it reaches
+        // the machine before the epoch check that would discard this answer. Only
+        // the store can judge a refusal of a request the store issued.
+        expect(store.state.value).toBe('authenticated');
+        expect(store.user.value).toEqual({id: 9});
+        expect(ended).not.toHaveBeenCalled();
     });
 
     it("still ends the session for a 401 on a request that is not the store's", async () => {

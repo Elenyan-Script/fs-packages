@@ -53,15 +53,16 @@ A body `parseUser` refuses is an **outage, never signed out**. Rendering a broke
 
 ## `createSessionStore(config)`
 
-| Option        | Type                                    | Notes                                                                                                       |
-| ------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `guard`       | `string`                                | The literal the API keys on. Exposed as `store.guard`; the store reads it nowhere else.                     |
-| `http`        | `HttpService`                           | An `fs-http` service. The package never creates one.                                                        |
-| `endpoints`   | `{me, login, logout}`                   | Use `sanctumEndpoints(prefix)` or hand-write it.                                                            |
-| `parseUser`   | `(body: unknown) => TUser \| undefined` | Your own type guard. `undefined` means outage.                                                              |
-| `isChallenge` | `(body: unknown) => boolean`            | Optional. Whether a successful login response defers rather than establishing a session. Defaults to never. |
-| `timeoutMs`   | `number`                                | Passed on **every** request the store makes (architectural principle 8).                                    |
-| `csrf`        | `{primeUrl: string}`                    | Optional — cross-origin consumers only. See [CSRF priming](#csrf-priming).                                  |
+| Option            | Type                                    | Notes                                                                                                                 |
+| ----------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `guard`           | `string`                                | The literal the API keys on. Exposed as `store.guard`; the store reads it nowhere else.                               |
+| `http`            | `HttpService`                           | An `fs-http` service. The package never creates one.                                                                  |
+| `endpoints`       | `{me, login, logout}`                   | Use `sanctumEndpoints(prefix)` or hand-write it.                                                                      |
+| `parseUser`       | `(body: unknown) => TUser \| undefined` | Your own type guard. `undefined` means outage.                                                                        |
+| `isChallenge`     | `(body: unknown) => boolean`            | Optional. Whether a successful login response defers rather than establishing a session. Defaults to never.           |
+| `timeoutMs`       | `number`                                | Passed on **every** request the store makes (architectural principle 8).                                              |
+| `csrf`            | `{primeUrl: string}`                    | Optional — cross-origin consumers only. See [CSRF priming](#csrf-priming).                                            |
+| `onListenerError` | `(error, event) => void`                | Optional. Where a failing `onSessionEnd` listener is reported; defaults to a loud `console.error`. Must not re-throw. |
 
 ### `loadSession()`
 
@@ -69,7 +70,7 @@ A body `parseUser` refuses is an **outage, never signed out**. Rendering a broke
 
 **Ending a session stales every read issued before it.** A `me` still in flight when `logout()` succeeds or the session expires commits nothing when it lands — it cannot hand back guarded access on the strength of an answer that predates the sign-out. Reads issued _after_ the end are untouched, so signing back in works normally.
 
-A **401 or 419 on a session that was live** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}`. Whether that event carries a `returnTo` depends on who got there first — with [`registerUnauthorizedMiddleware`](#registerunauthorizedmiddleware) installed the hook runs before the caller's `catch` and passes the `returnTo` you configured; reached from `loadSession()` alone there is none, because `loadSession` does not know where the person is. Live means `authenticated`, and also `outage` — an outage keeps the user, so a shell is still naming somebody and the 401 says that person is gone. From `loading` or `signed_out` the same status writes `signed_out` and fires nothing: arriving at a login screen is not an event.
+A **401 or 419 on a session that was live** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}`. The event carries **no `returnTo`** — `loadSession` does not know where the person is, and a refused `me` is judged here rather than by the expiry hook whatever registrars are installed (`DECISIONS.md` D19). Live means `authenticated`, and also `outage` — an outage keeps the user, so a shell is still naming somebody and the 401 says that person is gone. From `loading` or `signed_out` the same status writes `signed_out` and fires nothing: arriving at a login screen is not an event.
 
 ### `login(credentials)`
 
@@ -124,7 +125,7 @@ const unregister = session.onSessionEnd(({reason, returnTo}) => {
 });
 ```
 
-Returns an unregister function, and **every registration is its own subscription**: registering one function twice fires it twice per event and gives you two unregisters, each independent. Fired once per session end, for `logout` and `expired`, and never for a `challenge`. A listener that throws does not stop the others, and its fault is not reported anywhere — catch inside your own listener if you want it surfaced.
+Returns an unregister function, and **every registration is its own subscription**: registering one function twice fires it twice per event and gives you two unregisters, each independent. Fired once per session end, for `logout` and `expired`, and never for a `challenge`. A listener may be `async`. A listener that throws **or rejects** does not stop the others, and its failure is reported to `onListenerError` — by default a loud `console.error`. It is never awaited: ending a session is synchronous.
 
 ## `resolveSafeRedirect(candidate)`
 
@@ -165,7 +166,7 @@ Puts the 401/419 handler on `fs-http`'s response-error hook. A transport failure
 
 The `authenticated` check is **not** here; it lives in `handleSessionExpired`, so the single-flight guard has one home. fs-http `0.6.0` wraps registered middleware in `guarded()` by default, so this body needs no second wrap.
 
-It also skips a refusal of the store's **own** credential exchange — its login, its logout, the CSRF prime in front of either. fs-http runs every response-error middleware before rejecting to the caller, so without that skip a stale-token 419 on a login would end the session in the middle of the retry that recovers from it, and a refused logout would report an expiry and a failure at once. A refused `me` is the opposite case and stays here: nobody is waiting on its outcome (`DECISIONS.md` D19).
+It also skips a refusal of the store's **own** credential exchange — its login, its logout, the CSRF prime in front of either. fs-http runs every response-error middleware before rejecting to the caller, so without that skip a stale-token 419 on a login would end the session in the middle of the retry that recovers from it, and a refused logout would report an expiry and a failure at once. A refused `me` is skipped too, for a different reason: it is judged by the store's read epoch, and this hook runs _before_ fs-http rejects — ahead of that check — so a stale refusal handled here would clear a session a newer read had already established (`DECISIONS.md` D19).
 
 ## Status Handling
 

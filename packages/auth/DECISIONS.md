@@ -96,17 +96,42 @@ No sentences, no toasts, no i18n. `login()` and `logout()` return outcomes and
 2FA lives behind the `challenge` arm rather than inside the package: the package
 admits the login deferred and refuses to guess what it deferred to.
 
-## D8 — A listener's own throw is swallowed
+## D8 — A listener's own failure is swallowed AND reported
 
 `onSessionEnd` wraps each listener call, so one throwing listener does not cost
 the others their notice that the session ended. Nothing is rethrown and nothing
 is reported.
 
-This is a deliberate tension with ADR-0048. The package has no reporting
-channel — no logger, no tracker, and no `console` it is entitled to write to as
-a library — so the choice is between losing one listener's fault and losing
-every later listener's notification. A consumer that wants the fault surfaced
-catches inside its own listener, where it has a channel.
+_Reversed 2026-09-16, fix round 7. Findings `7dfa378e93fe` (four lanes) and
+`96910e278162`; **WR-1445 pulled into 0.1.0** rather than deferred to 0.2.0._
+
+The original entry swallowed the fault and reported it nowhere, arguing that the
+package "has no `console` it is entitled to write to as a library", so the only
+choice was between losing one listener's fault and losing every later listener's
+notification.
+
+**That was a false dilemma, and our own sibling package refutes it.** fs-http's
+`guarded()` (ADR-0037) does both: it swallows a middleware throw so the
+interceptor chain survives, and it reports it — `console.error('[fs-http] …')`
+by default, replaceable through `onMiddlewareError`. The Armory already holds
+that a swallowed callback failure is loud by default. There was never a choice
+to make; the entry simply did not look one package over.
+
+So `CreateSessionStoreConfig` gains **`onListenerError`**, defaulting to a loud
+`console.error` in `guarded()`'s exact shape with an `[fs-auth]` prefix, and
+every listener failure routes to it. The sink **must not re-throw** — the same
+rule and the same reason as `GuardedMiddlewareErrorHandler`: re-throwing
+re-opens the failure the swallow closes and costs every later listener its
+notice.
+
+**Async listeners were losing failures silently, which is why the reversal could
+not wait.** The listener type was `(event) => void`, and TypeScript lets an
+`async` function satisfy it — so a consumer writing `onSessionEnd(async () => …)`
+compiles, and its rejection never enters a synchronous `catch`. The type is now
+`(event) => void | Promise<void>` and a returned thenable's rejection reaches the
+same sink. **`endSession` stays synchronous**: the rejection is routed, never
+awaited, because the single-flight guard is a synchronous read of the machine
+(D16) and the session is already cleared before any listener runs.
 
 _Raised and declined three times, 2026-09-16: findings `c27ad7f2bff2` (first
 private round), `fe198b1f98cf` and its duplicate `1d444695cd1f` (second). The
@@ -150,7 +175,8 @@ and an assertion on the unchanged value for the proxy.
 ## D11 — Six surviving mutants
 
 _Fifth added in fix round 3; sixth in fix round 4, 2026-09-16. Score re-measured
-at each: 98.00 → 97.71 → 97.61 → 97.67 (fix round 5 added no new survivor; the six below are exactly the six measured)._
+at each: 98.00 → 97.71 → 97.61 → 97.67 → 97.71. Rounds 5, 6 and 7 each added
+no new survivor; the six below are exactly the six measured._
 
 The mutation gate is 90. Five survivors have no observable behaviour change; one
 (the fifth) has one nobody can provoke on purpose. Named here so a later reader
@@ -503,12 +529,29 @@ identical hole: `login()` already returns a refused prime as
 it is the same defect with the same shape. It is spec'd over the real service
 like the other two.
 
-**`me` is deliberately not in the set.** A refused `me` is the one refusal that
-_is_ the session ending underneath the consumer, with nobody waiting on an
-outcome — it stays the hook's, and after D16 the two paths cost one event
-between them. A consequence worth stating because it corrects this package's own
-docs: with the registrar installed, the hook fires **first**, so the event for a
-refused `me` carries the consumer's `returnTo`. The docs claimed it never did.
+**`me` joined the set too** — _amended 2026-09-16, fix round 7, finding
+`c2c787c1265f`._ It was left out on the argument that a refused `me` _is_ the
+session ending underneath the consumer, with nobody waiting on an outcome. True,
+and beside the point: the question is not who is waiting but **who can judge**.
+
+A `me` refusal is judged by the read epoch — `runLoadSession` discards an answer
+whose ticket is stale before it touches the machine (D15). The hook runs
+**before** fs-http rejects, so it reaches the machine before that check can run.
+The epoch cannot protect a path that executes ahead of it. Interleaving: read A
+takes ticket 1; read B takes ticket 2 and commits `authenticated`; A's late 401
+arrives, the hook clears B's perfectly valid session and fires `expired`.
+
+So the invariant is wider than the one this entry first stated: **every refusal
+of a request the store issued is judged by the store's own epoch-checked path;
+the hook judges only OTHER requests.** The fix removes the carve-out rather than
+adding a mechanism — `endpoints.me` joins `ownEndpoints` and `runLoadSession`'s
+existing 401 branch is the single judge.
+
+The honest consequence: a `me`-detected expiry now carries **no `returnTo`**,
+because `loadSession` does not know where the person is. Round 4 narrowed this
+package's docs the other way, on the strength of the behaviour this round
+removes; they are narrowed back. A consumer that wants a return-to on a
+background revalidation reads it in its own listener, where it has one.
 
 This does not close WR-1441 and does not touch it: two stores sharing one
 service still both hear a 401 raised for either. It narrows that surface

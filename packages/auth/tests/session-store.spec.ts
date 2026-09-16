@@ -1049,7 +1049,7 @@ describe('createSessionStore', () => {
         });
 
         it('fires every listener even when one of them throws', async () => {
-            const store = build();
+            const store = build({onListenerError: vi.fn()});
             await signIn(store);
             const first = vi.fn(() => {
                 throw new Error("a listener fault is the listener's own");
@@ -1061,6 +1061,69 @@ describe('createSessionStore', () => {
             expect(() => store.handleSessionExpired()).not.toThrow();
             expect(first).toHaveBeenCalledOnce();
             expect(second).toHaveBeenCalledOnce();
+        });
+
+        it('reports a listener that throws, and still runs the others', async () => {
+            const onListenerError = vi.fn();
+            const store = build({onListenerError});
+            await signIn(store);
+            const defect = new Error("a listener fault is the listener's own");
+            const second = vi.fn();
+            store.onSessionEnd(() => {
+                throw defect;
+            });
+            store.onSessionEnd(second);
+
+            store.handleSessionExpired('/employers/7');
+
+            expect(onListenerError).toHaveBeenCalledExactlyOnceWith(defect, {
+                reason: 'expired',
+                returnTo: '/employers/7',
+            });
+            expect(second).toHaveBeenCalledOnce();
+        });
+
+        it('reports a listener that REJECTS, which no synchronous catch can see', async () => {
+            const onListenerError = vi.fn();
+            const store = build({onListenerError});
+            await signIn(store);
+            const defect = new Error('an async listener fault');
+            const second = vi.fn();
+            store.onSessionEnd(async () => {
+                throw defect;
+            });
+            store.onSessionEnd(second);
+
+            store.handleSessionExpired();
+
+            // `endSession` stays SYNCHRONOUS — the single-flight guard is a
+            // synchronous read of the machine (D16) — so the rejection is routed
+            // to the sink, never awaited in the middle of ending a session.
+            expect(second).toHaveBeenCalledOnce();
+            expect(onListenerError).not.toHaveBeenCalled();
+
+            await flushMicrotasks();
+
+            expect(onListenerError).toHaveBeenCalledExactlyOnceWith(defect, {reason: 'expired'});
+        });
+
+        it('writes the failure to console.error when no sink is configured', async () => {
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+            const store = build();
+            await signIn(store);
+            const defect = new Error('nobody configured a sink');
+            store.onSessionEnd(() => {
+                throw defect;
+            });
+
+            store.handleSessionExpired();
+
+            expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+                '[fs-auth] onSessionEnd listener failed and was swallowed:',
+                defect,
+                {reason: 'expired'},
+            );
+            consoleError.mockRestore();
         });
 
         it('gives every registration its own subscription, however often one function is added', async () => {
@@ -1193,20 +1256,21 @@ describe('createSessionStore', () => {
     });
 
     describe('ownsRefusalOf', () => {
-        it('claims the three requests whose refusals it answers itself', () => {
+        it('claims every request it issued itself', () => {
             const store = build({csrf: {primeUrl: PRIME_URL}});
 
             expect(store.ownsRefusalOf('auth/employer/login')).toBe(true);
             expect(store.ownsRefusalOf('auth/employer/logout')).toBe(true);
             expect(store.ownsRefusalOf(PRIME_URL)).toBe(true);
+            // `me` joined them in fix round 5's successor: its refusal has to be
+            // judged by the read epoch, which the hook runs too early to consult
+            // (DECISIONS D19, amended).
+            expect(store.ownsRefusalOf('auth/employer/me')).toBe(true);
         });
 
-        it('claims neither me, nor another request, nor the absence of one', () => {
+        it('claims neither another request nor the absence of one', () => {
             const store = build({csrf: {primeUrl: PRIME_URL}});
 
-            // `me` is the one refusal that IS the session ending underneath the
-            // consumer, so it stays the hook's.
-            expect(store.ownsRefusalOf('auth/employer/me')).toBe(false);
             expect(store.ownsRefusalOf('employers/7')).toBe(false);
             expect(store.ownsRefusalOf(undefined)).toBe(false);
         });
