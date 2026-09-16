@@ -108,18 +108,23 @@ describe('registerAuthGuard', () => {
 describe('registerUnauthorizedMiddleware', () => {
     let http: HttpStub;
     let handleSessionExpired: ReturnType<typeof vi.fn>;
+    let ownsRefusalOf: ReturnType<typeof vi.fn>;
 
     const fire = (error: unknown): void => {
         for (const middleware of http.errorMiddleware) middleware(error as Parameters<typeof middleware>[0]);
     };
 
+    /** A store that owns none of the refusals below unless a spec says otherwise. */
+    const expiryHandler = () => ({handleSessionExpired, ownsRefusalOf});
+
     beforeEach(() => {
         http = createHttpStub();
         handleSessionExpired = vi.fn();
+        ownsRefusalOf = vi.fn(() => false);
     });
 
     it.each([401, 419])('ends the session on a %i', (status) => {
-        registerUnauthorizedMiddleware(http, {handleSessionExpired});
+        registerUnauthorizedMiddleware(http, expiryHandler());
 
         fire(axiosRejection(status));
 
@@ -127,7 +132,7 @@ describe('registerUnauthorizedMiddleware', () => {
     });
 
     it("carries the consumer's return-to", () => {
-        registerUnauthorizedMiddleware(http, {handleSessionExpired}, {returnTo: () => '/employers/7'});
+        registerUnauthorizedMiddleware(http, expiryHandler(), {returnTo: () => '/employers/7'});
 
         fire(axiosRejection(401));
 
@@ -135,7 +140,7 @@ describe('registerUnauthorizedMiddleware', () => {
     });
 
     it.each([403, 422, 429, 500])('leaves a %i to the consumer', (status) => {
-        registerUnauthorizedMiddleware(http, {handleSessionExpired});
+        registerUnauthorizedMiddleware(http, expiryHandler());
 
         fire(axiosRejection(status));
 
@@ -143,15 +148,47 @@ describe('registerUnauthorizedMiddleware', () => {
     });
 
     it('leaves a transport failure alone — nothing answered, so nothing ended the session', () => {
-        registerUnauthorizedMiddleware(http, {handleSessionExpired});
+        registerUnauthorizedMiddleware(http, expiryHandler());
 
         fire(axiosRejection(undefined));
 
         expect(handleSessionExpired).not.toHaveBeenCalled();
     });
 
+    it("leaves a refusal the store answers itself to the store's own caller", () => {
+        ownsRefusalOf.mockReturnValue(true);
+        registerUnauthorizedMiddleware(http, expiryHandler());
+
+        fire(axiosRejection(419, {message: 'stale'}, 'auth/employer/login'));
+
+        // The hook asks which request was refused, and takes the store's answer.
+        expect(ownsRefusalOf).toHaveBeenCalledExactlyOnceWith('auth/employer/login');
+        expect(handleSessionExpired).not.toHaveBeenCalled();
+    });
+
+    it('ends the session for a refusal the store does not claim', () => {
+        registerUnauthorizedMiddleware(http, expiryHandler());
+
+        fire(axiosRejection(401, undefined, 'auth/employer/me'));
+
+        expect(ownsRefusalOf).toHaveBeenCalledExactlyOnceWith('auth/employer/me');
+        expect(handleSessionExpired).toHaveBeenCalledOnce();
+    });
+
+    it('asks about a refusal that carries no request config at all, rather than falling over', () => {
+        registerUnauthorizedMiddleware(http, expiryHandler());
+
+        // An axios error's `config` is optional on the type, and the helper above
+        // supplies one for every other spec here. Drop it explicitly, or nothing
+        // in the suite ever reaches the hook's own optional read again.
+        fire({isAxiosError: true, response: {status: 401, data: undefined}});
+
+        expect(ownsRefusalOf).toHaveBeenCalledExactlyOnceWith(undefined);
+        expect(handleSessionExpired).toHaveBeenCalledOnce();
+    });
+
     it('returns an unregister that takes the handler off the hook', () => {
-        registerUnauthorizedMiddleware(http, {handleSessionExpired})();
+        registerUnauthorizedMiddleware(http, expiryHandler())();
 
         fire(axiosRejection(401));
 

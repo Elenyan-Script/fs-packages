@@ -64,6 +64,17 @@ export interface AuthenticationState {
 /** The other half of the same split — what the 401/419 registrar needs and nothing more. */
 export interface SessionExpiryHandler {
     handleSessionExpired(returnTo?: string): void;
+    /**
+     * Whether a refused request was this store's own credential exchange — its
+     * login, its logout, or the CSRF prime in front of one. Their refusals are
+     * already returned to the caller as an outcome, so the expiry hook must not
+     * ALSO read them as the session ending underneath somebody (DECISIONS D19).
+     *
+     * The store answers it because the store owns the endpoint strings. A list
+     * handed to the registrar instead would be a copy to keep in step with no
+     * mechanism keeping it there.
+     */
+    ownsRefusalOf(url: string | undefined): boolean;
 }
 
 export interface SessionStore<TUser, TCredentials> extends AuthenticationState, SessionExpiryHandler {

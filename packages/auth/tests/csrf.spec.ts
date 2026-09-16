@@ -65,6 +65,31 @@ describe('createCsrfPrimer', () => {
         expect(vi.mocked(http.getRequest)).toHaveBeenCalledTimes(2);
     });
 
+    it('lets a stale rejection expire without clearing the prime that replaced it', async () => {
+        let rejectStale = (): void => undefined;
+        vi.mocked(http.getRequest)
+            .mockReturnValueOnce(
+                new Promise((_resolve, reject) => {
+                    rejectStale = () => reject(axiosRejection(419));
+                }),
+            )
+            .mockResolvedValue(respondWith(''));
+        const primer = createCsrfPrimer(http, PRIME_URL, OPTIONS);
+
+        const stale = primer.prime();
+        primer.reset();
+        const fresh = primer.prime();
+        rejectStale();
+
+        await expect(stale).rejects.toMatchObject({response: {status: 419}});
+        await fresh;
+        await primer.prime();
+
+        // Three primes, two requests: the third reuses the memo the second
+        // installed, which the first's rejection has no business clearing.
+        expect(vi.mocked(http.getRequest)).toHaveBeenCalledTimes(2);
+    });
+
     it('gives two primers their own memo', async () => {
         vi.mocked(http.getRequest).mockResolvedValue(respondWith(''));
 

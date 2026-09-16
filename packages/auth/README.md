@@ -36,9 +36,12 @@ export const session = createSessionStore<Employer>({
 
 ## The four rulings this package encodes
 
-- **A failed logout leaves the session standing.** The machine moves to
-  `signed_out` on success only; every failure comes back as a `failed` outcome
-  carrying the status and body, and nothing probes the server behind it.
+- **A failed logout leaves the session standing — a REFUSED one confirms it is
+  gone.** The rule protects a cookie the server still honours, so a 401 or 419
+  from the logout endpoint (the server saying it does not) answers
+  `signed_out` and ends the session once as an `expired`. Every other failure
+  comes back as a `failed` outcome carrying the status and body. Nothing probes
+  the server behind either.
 - **Session end carries the return-to.** `handleSessionExpired(returnTo?)` puts
   it on the event; your exit writes it under your own query name.
 - **`user` is readonly outward.** `setUser(next)` is the one writer, and it

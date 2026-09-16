@@ -54,7 +54,10 @@ export const respondWith = (data: unknown, status = 200) => ({data, status});
  * a real one — which is the point: the specs exercise the store's narrowing,
  * not axios's.
  */
-export const axiosRejection = (status: number | undefined, data: unknown = undefined) => ({
+export const axiosRejection = (status: number | undefined, data: unknown = undefined, url?: string) => ({
     isAxiosError: true,
     response: status === undefined ? undefined : {status, data},
+    // The expiry hook asks WHICH request was refused, so the rejection has to be
+    // able to say. Absent by default: most specs are about the status alone.
+    config: {url},
 });

@@ -69,7 +69,7 @@ A body `parseUser` refuses is an **outage, never signed out**. Rendering a broke
 
 **Ending a session stales every read issued before it.** A `me` still in flight when `logout()` succeeds or the session expires commits nothing when it lands — it cannot hand back guarded access on the strength of an answer that predates the sign-out. Reads issued _after_ the end are untouched, so signing back in works normally.
 
-A **401 or 419 on a session that was live** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}` and no `returnTo` (`loadSession` does not know where the person is). Live means `authenticated`, and also `outage` — an outage keeps the user, so a shell is still naming somebody and the 401 says that person is gone. From `loading` or `signed_out` the same status writes `signed_out` and fires nothing: arriving at a login screen is not an event.
+A **401 or 419 on a session that was live** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}`. Whether that event carries a `returnTo` depends on who got there first — with [`registerUnauthorizedMiddleware`](#registerunauthorizedmiddleware) installed the hook runs before the caller's `catch` and passes the `returnTo` you configured; reached from `loadSession()` alone there is none, because `loadSession` does not know where the person is. Live means `authenticated`, and also `outage` — an outage keeps the user, so a shell is still naming somebody and the 401 says that person is gone. From `loading` or `signed_out` the same status writes `signed_out` and fires nothing: arriving at a login screen is not an event.
 
 ### `login(credentials)`
 
@@ -100,7 +100,9 @@ const outcome = await session.logout();
 if (outcome.kind === 'failed') showRetryable(); // the session is still live
 ```
 
-The machine moves to `signed_out` on **success only**, and nothing probes the server behind a failure. A cookie the server still honours must never be reported as gone. A success still moves the machine when there was nothing live to end — a stale button press asks the server and reports what it said — but it fires **no** `onSessionEnd`, because one session ends once (`DECISIONS.md` D16).
+The machine moves to `signed_out` on success, and nothing probes the server behind a failure. What the rule protects is a cookie the server still **honours** — that must never be reported as gone.
+
+So a **401 or 419 from the logout endpoint** is not a failure: it is the server saying it does not honour the cookie. `logout()` answers `{kind: 'signed_out'}`, the session ends once with `{reason: 'expired'}` and no `returnTo` (the server ended it; the button only found out), and nothing probes afterwards. Every other failure — transport, 5xx, 403, 422, 429 — stays `failed` with the session standing. A refused **CSRF prime** is always `failed`: the cookie route is not the logout endpoint, and the logout endpoint was never asked (`DECISIONS.md` D1, amended). A success still moves the machine when there was nothing live to end — a stale button press asks the server and reports what it said — but it fires **no** `onSessionEnd`, because one session ends once (`DECISIONS.md` D16).
 
 Unlike `login()`, `logout()` answers `failed` for **every** failure, a defect included — it never throws. A throw here would strand a shell mid-sign-out with the session still live and nothing to render, and the only question the person can act on is whether to press again.
 
@@ -162,6 +164,8 @@ const unregister = registerUnauthorizedMiddleware(httpService, session, {returnT
 Puts the 401/419 handler on `fs-http`'s response-error hook. A transport failure is left alone — nothing answered, so nothing said the session was over — and 403, 422, 429 and the rest stay yours to discriminate.
 
 The `authenticated` check is **not** here; it lives in `handleSessionExpired`, so the single-flight guard has one home. fs-http `0.6.0` wraps registered middleware in `guarded()` by default, so this body needs no second wrap.
+
+It also skips a refusal of the store's **own** credential exchange — its login, its logout, the CSRF prime in front of either. fs-http runs every response-error middleware before rejecting to the caller, so without that skip a stale-token 419 on a login would end the session in the middle of the retry that recovers from it, and a refused logout would report an expiry and a failure at once. A refused `me` is the opposite case and stays here: nobody is waiting on its outcome (`DECISIONS.md` D19).
 
 ## Status Handling
 

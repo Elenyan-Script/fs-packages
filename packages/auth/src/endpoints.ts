@@ -16,3 +16,11 @@ export const sanctumEndpoints = (prefix: string): SessionEndpoints => ({
  * a consumer re-declaring it has forked the stance.
  */
 export const SIGNED_OUT_STATUSES: ReadonlySet<number> = new Set([401, 419]);
+
+/**
+ * Whether an answered status is one of the two. One reader idiom for the set, so
+ * the `undefined` narrowing is written once rather than beside every use — it is
+ * there for the type checker, since `Set.has(undefined)` is already `false`.
+ */
+export const isSignedOutStatus = (status: number | undefined): boolean =>
+    status !== undefined && SIGNED_OUT_STATUSES.has(status);

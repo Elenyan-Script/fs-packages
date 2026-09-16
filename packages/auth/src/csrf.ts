@@ -32,16 +32,26 @@ export const createCsrfPrimer = (
 
     return {
         prime() {
-            pending ??= http.getRequest(primeUrl, options).then(
+            if (pending !== undefined) return pending;
+
+            const attempt: Promise<void> = http.getRequest(primeUrl, options).then(
                 () => undefined,
                 (error: unknown) => {
-                    pending = undefined;
+                    /*
+                     * Forget THIS attempt, and only while it is still the one on
+                     * the slot. A `reset()` between the request and its rejection
+                     * has already installed a newer prime, and clearing that one
+                     * sends the next caller after a cookie that is in flight.
+                     */
+                    if (pending === attempt) pending = undefined;
 
                     throw error;
                 },
             );
 
-            return pending;
+            pending = attempt;
+
+            return attempt;
         },
         reset() {
             pending = undefined;

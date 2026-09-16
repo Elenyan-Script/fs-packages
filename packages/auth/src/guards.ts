@@ -85,5 +85,16 @@ export const registerUnauthorizedMiddleware = (
 
         if (!SIGNED_OUT_STATUSES.has(error.response.status)) return;
 
+        /*
+         * fs-http runs every response-error middleware BEFORE it rejects to the
+         * caller, so without this the hook reads a refusal the store is about to
+         * hand back as an outcome: a stale-token 419 on a login ends the session
+         * in the middle of the retry that was going to succeed, and a refused
+         * logout ends it twice over with two contradictory signals. A refused
+         * `me` is the opposite case and stays here — nobody is waiting on it,
+         * and it IS the session ending underneath somebody (DECISIONS D19).
+         */
+        if (store.ownsRefusalOf(error.config?.url)) return;
+
         store.handleSessionExpired(options.returnTo?.());
     });

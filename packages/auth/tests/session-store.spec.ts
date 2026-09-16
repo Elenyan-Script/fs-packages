@@ -760,6 +760,72 @@ describe('createSessionStore', () => {
             expect(store.state.value).toBe('authenticated');
         });
 
+        describe('a refusal from the logout endpoint is the server confirming there is no session', () => {
+            it.each([401, 419])(
+                'answers signed_out and ends the session once with an expiry on a %i',
+                async (status) => {
+                    const store = build();
+                    await signIn(store);
+                    const ended = vi.fn();
+                    store.onSessionEnd(ended);
+                    vi.mocked(http.postRequest).mockRejectedValue(axiosRejection(status, {message: 'no session'}));
+
+                    const outcome = await store.logout();
+
+                    // D1 amended: the ruling protects a cookie the server still
+                    // HONOURS. A 401 is the server saying it does not, so the person
+                    // is signed out — and the server ended it, not the button.
+                    expect(outcome).toEqual({kind: 'signed_out'});
+                    expect(store.state.value).toBe('signed_out');
+                    expect(store.user.value).toBeUndefined();
+                    expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired'});
+                },
+            );
+
+            it('fires nothing when there was no session left to confirm', async () => {
+                const store = build();
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(401));
+                await store.loadSession();
+                expect(store.state.value).toBe('signed_out');
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.postRequest).mockRejectedValue(axiosRejection(401));
+
+                const outcome = await store.logout();
+
+                expect(outcome).toEqual({kind: 'signed_out'});
+                expect(ended).not.toHaveBeenCalled();
+            });
+
+            it('never probes the server behind it', async () => {
+                const store = build();
+                await signIn(store);
+                vi.mocked(http.getRequest).mockClear();
+                vi.mocked(http.postRequest).mockRejectedValue(axiosRejection(401));
+
+                await store.logout();
+
+                expect(vi.mocked(http.getRequest)).not.toHaveBeenCalled();
+            });
+
+            it('does not read a refused PRIME as the server confirming anything', async () => {
+                const store = build({csrf: {primeUrl: PRIME_URL}});
+                await signIn(store);
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(401));
+
+                const outcome = await store.logout();
+
+                // The cookie route refusing says nothing about the session, and
+                // the logout endpoint was never asked. Ruling 1 in full force.
+                expect(outcome).toEqual({kind: 'failed', status: 401, body: undefined});
+                expect(vi.mocked(http.postRequest)).not.toHaveBeenCalled();
+                expect(store.state.value).toBe('authenticated');
+                expect(ended).not.toHaveBeenCalled();
+            });
+        });
+
         describe('one session, one event', () => {
             it('adds nothing to an expiry that ended the session while the logout was in flight', async () => {
                 const store = build();
@@ -1075,6 +1141,33 @@ describe('createSessionStore', () => {
 
             expect(outcome).toEqual({kind: 'authenticated'});
             expect(store.user.value).toEqual({id: 9});
+        });
+    });
+
+    describe('ownsRefusalOf', () => {
+        it('claims the three requests whose refusals it answers itself', () => {
+            const store = build({csrf: {primeUrl: PRIME_URL}});
+
+            expect(store.ownsRefusalOf('auth/employer/login')).toBe(true);
+            expect(store.ownsRefusalOf('auth/employer/logout')).toBe(true);
+            expect(store.ownsRefusalOf(PRIME_URL)).toBe(true);
+        });
+
+        it('claims neither me, nor another request, nor the absence of one', () => {
+            const store = build({csrf: {primeUrl: PRIME_URL}});
+
+            // `me` is the one refusal that IS the session ending underneath the
+            // consumer, so it stays the hook's.
+            expect(store.ownsRefusalOf('auth/employer/me')).toBe(false);
+            expect(store.ownsRefusalOf('employers/7')).toBe(false);
+            expect(store.ownsRefusalOf(undefined)).toBe(false);
+        });
+
+        it('claims no prime on a store that configured no csrf', () => {
+            const store = build();
+
+            expect(store.ownsRefusalOf(PRIME_URL)).toBe(false);
+            expect(store.ownsRefusalOf('auth/employer/login')).toBe(true);
         });
     });
 

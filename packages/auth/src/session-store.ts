@@ -6,6 +6,7 @@ import {computed, readonly, ref} from 'vue';
 import type {
     CreateSessionStoreConfig,
     LoginOutcome,
+    LogoutOutcome,
     RequestOptions,
     SessionEndEvent,
     SessionState,
@@ -13,7 +14,7 @@ import type {
 } from './types';
 
 import {createCsrfPrimer} from './csrf';
-import {SIGNED_OUT_STATUSES} from './endpoints';
+import {isSignedOutStatus} from './endpoints';
 
 /** The one status that earns a second attempt, and only from `login()` (ADR-0050 § 3). */
 const STALE_TOKEN_STATUS = 419;
@@ -63,6 +64,19 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
             : {timeout: timeoutMs, withCredentials: true, withXSRFToken: true};
 
     const primer = config.csrf === undefined ? undefined : createCsrfPrimer(http, config.csrf.primeUrl, requestOptions);
+
+    /*
+     * The requests this store makes as part of a credential exchange, and whose
+     * refusals it therefore returns to its own caller. The 401/419 hook asks for
+     * this set by URL so it can leave those alone (DECISIONS D19). `me` is
+     * deliberately absent: a refused `me` IS the session ending, with no caller
+     * waiting on an outcome.
+     */
+    const ownEndpoints: ReadonlySet<string> = new Set(
+        config.csrf === undefined
+            ? [endpoints.login, endpoints.logout]
+            : [endpoints.login, endpoints.logout, config.csrf.primeUrl],
+    );
 
     const state = ref<SessionState>('loading');
     const user = ref<TUser | undefined>() as Ref<TUser | undefined>;
@@ -180,7 +194,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 
             const status = error.response?.status;
 
-            if (status !== undefined && SIGNED_OUT_STATUSES.has(status)) {
+            if (isSignedOutStatus(status)) {
                 /*
                  * A revalidating `me` that answers 401 or 419 is an expiry, and the
                  * two statuses are one class with one action (ADR-0050 § 3). It goes
@@ -252,6 +266,12 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         return http.postRequest(endpoints.login, credentials, requestOptions);
     };
 
+    const failedLogout = (error: unknown): LogoutOutcome => ({
+        kind: 'failed',
+        status: statusOf(error),
+        body: bodyOf(error),
+    });
+
     const refusalOf = (error: TransportFailure): LoginOutcome => ({
         kind: 'refused',
         status: error.response?.status,
@@ -320,24 +340,44 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         },
 
         async logout() {
-            try {
-                if (primer !== undefined) await primer.prime();
+            if (primer !== undefined) {
+                try {
+                    await primer.prime();
+                } catch (error) {
+                    /*
+                     * The cookie route refusing says nothing about the session, and
+                     * the logout endpoint was never asked — so this is ruling 1 in
+                     * full force whatever status came back.
+                     */
+                    return failedLogout(error);
+                }
+            }
 
+            try {
                 await http.postRequest(endpoints.logout, {}, requestOptions);
             } catch (error) {
                 /*
-                 * Ruling 1. The machine moves on SUCCESS ONLY and nothing probes the
-                 * server afterwards: a cookie the server still honours must never be
-                 * reported as gone, and the question the caller can act on is whether
-                 * to press again — which the outcome answers.
+                 * Ruling 1 (D1), amended 2026-09-16. Every failure still leaves the
+                 * session standing and answers `failed`, and nothing probes the
+                 * server afterwards — because the ruling protects a cookie the
+                 * server still HONOURS. A 401 or 419 is the server saying it does
+                 * not, which is not a failure to report but a sign-out to pass on:
+                 * the caller is told `signed_out`, and the session ends as an
+                 * EXPIRY, because the server ended it and the person only found out.
                  */
-                return {kind: 'failed', status: statusOf(error), body: bodyOf(error)};
+                if (!isSignedOutStatus(statusOf(error))) return failedLogout(error);
+
+                endSession({reason: 'expired'});
+
+                return {kind: 'signed_out'};
             }
 
             endSession({reason: 'logout'});
 
             return {kind: 'signed_out'};
         },
+
+        ownsRefusalOf: (url) => url !== undefined && ownEndpoints.has(url),
 
         handleSessionExpired(returnTo) {
             /*

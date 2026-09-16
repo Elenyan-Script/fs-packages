@@ -4,16 +4,40 @@ Why this package is shaped the way it is. Every entry names a cost it accepts or
 a limitation it lives with, so the argument sits here rather than in a comment
 nobody dates. Canonical reasoning: **ADR-0050** (`adrs.script.nl`).
 
-## D1 — A failed logout leaves the session standing
+## D1 — A failed logout leaves the session standing; a REFUSED one confirms it is gone
 
 _2026-09-14, Commander ruling. ADR-0050 § Resolved Questions, "Failed logout"._
+_Amended 2026-09-16, Commander ruling, fix round 4._
 
-`logout()` moves the machine to `signed_out` on **success only**. On any failure
-the state and the user are unchanged, no `sessionEnd` listener fires, and
-nothing probes the server afterwards. A cookie the server still honours must
-never be reported as gone — the alternative sends somebody to the entrance while
-their session is live. ublgenie's `finally` (tear down regardless) was rejected
-for exactly this reason.
+`logout()` moves the machine on **success**, and on exactly one kind of failure.
+On every other failure the state and the user are unchanged, no `sessionEnd`
+listener fires, and nothing probes the server afterwards. ublgenie's `finally`
+(tear down regardless) was rejected, and stays rejected.
+
+**What the ruling protects, stated precisely — the amendment.** A cookie the
+server still **honours** must never be reported as gone; the alternative sends
+somebody to the entrance while their session is live. A **401 or 419 from the
+logout endpoint is the server saying it does not honour it.** That is not a
+failure to report, it is a sign-out to pass on. The original wording said
+"success only" and so turned the server's clearest possible answer into a
+`failed` the consumer had to interpret — with the expiry hook installed, into
+two contradictory signals at once (D19).
+
+- **401 / 419 on the logout POST** → outcome `{kind: 'signed_out'}`, the session
+  ends **once** with `{reason: 'expired'}`, and nothing probes afterwards.
+  `expired` and not `logout`: the server ended the session, and the person
+  pressing the button only found out. The event carries no `returnTo` —
+  `logout()` does not know where the person is, the same reason the
+  revalidating-`me` path carries none (D14).
+- **Every other failure** — a transport fault, 5xx, 403, 422, 429, and a
+  rejection that is not the transport's at all (D13) — stays
+  `{kind: 'failed'}`, session standing, no event.
+- **A refused CSRF prime is never the server confirming anything.** The cookie
+  route is not the logout endpoint, and with a failed prime the logout endpoint
+  was never asked at all, so a 401 there is `failed` like any other prime
+  failure. The prime and the POST are awaited in separate `try` blocks for
+  exactly this reason, and a spec pins it — collapsing them back reds that one
+  spec and nothing else.
 
 ## D2 — The session-end event carries the return-to
 
@@ -114,13 +138,18 @@ proxy and still refuses a write, and the declared `Readonly<Ref<…>>` still
 refuses one at compile time. Both are spec'd — a `@ts-expect-error` for the type
 and an assertion on the unchanged value for the proxy.
 
-## D11 — Five surviving mutants
+## D11 — Six surviving mutants
 
-_Fifth survivor added in fix round 3, 2026-09-16; score re-measured at 97.71._
+_Fifth added in fix round 3; sixth in fix round 4, 2026-09-16. Score re-measured
+at each: 98.00 → 97.71 → 97.61._
 
-The mutation gate is 90 and the package scores 97.71. Four survivors have no
-observable behaviour change; the fifth (added last) has one nobody can provoke
-on purpose. Named here so a later reader does not re-derive them:
+The mutation gate is 90. Five survivors have no observable behaviour change; one
+(the fifth) has one nobody can provoke on purpose. Named here so a later reader
+does not re-derive them. **Three of the five equivalents are the same shape** —
+a `!== undefined` narrowing written for the type checker in front of a
+`Set.has`, which is already `false` for `undefined`. That is worth knowing before
+anyone "fixes" the score by deleting one: the narrowing is what keeps the call
+type-safe, and the set's behaviour is what makes the mutant equivalent.
 
 - `issued += 1` → `issued -= 1`. The read epoch needs distinct successive values
   and a last-writer comparison; counting down satisfies both.
@@ -128,8 +157,12 @@ on purpose. Named here so a later reader does not re-derive them:
   the only place the value is read.
 - `const SUPERSEDED = {status: undefined, body: undefined}` → `{}`. Every caller
   reads both properties back as `undefined` either way.
-- `status !== undefined && SIGNED_OUT_STATUSES.has(status)` → `true && …`. The
-  guard exists for the type checker; `Set.has(undefined)` is already `false`.
+- `status !== undefined && SIGNED_OUT_STATUSES.has(status)` → `true && …`, now
+  in `isSignedOutStatus` (`endpoints.ts`). It moved there in fix round 4 when
+  `logout()` became its second reader — one survivor for one idiom, rather than
+  the same equivalent mutant once per call site.
+- `url !== undefined && ownEndpoints.has(url)` → `true && …` in `ownsRefusalOf`
+  (D19). The same shape as the one above, for the same reason.
 - `while (outcome === SUPERSEDED && latestRead !== awaited)` → `while (true && …)`
   in `readUntilSettled` (D17). **Not equivalent, and not deterministically
   killable.** It would make `login()` wait for a newer read even when its own
@@ -398,3 +431,55 @@ WR-1442 also carries the three-round trigger: **a fourth concurrency finding on
 each found a real interleaving defect in this one file, which is the shape the
 war room's three-round rule exists to catch — the next one is a question about
 the design, not a patch.
+
+## D19 — A refusal of the store's own credential exchange is an outcome, never an expiry
+
+_Fix round 4, 2026-09-16._
+
+fs-http runs **every** response-error middleware before it rejects to the
+caller's `catch` (`packages/http/src/http.ts`, the response interceptor's error
+arm). `registerUnauthorizedMiddleware` discriminated on status alone. So the
+expiry hook read refusals the store was a microtask away from turning into an
+outcome, and did it first:
+
+- A primed store that is live draws a **stale-token 419 on its login POST** —
+  the exact refusal the one retry exists to recover from. The hook ended the
+  session before the retry ran, and the retry then succeeded: a session-end
+  event the consumer acted on, for a session that never ended.
+- A **logout POST answering 401/419** produced an `expired` event from the hook
+  and a `failed` outcome from `logout()` — two signals that contradict each
+  other, about the same request.
+
+Neither was reachable by any spec in this package, and that is the part worth
+recording: the retry specs stub `postRequest` directly, and the registrar specs
+call the middleware by hand. Each half was right on its own. The composition had
+never been executed, so `tests/composition.spec.ts` now drives both over a real
+`createHttpService` with only the adapter replaced.
+
+**The invariant: a refusal of a request whose outcome the store already returns
+to its caller is that caller's to read, and never the hook's.**
+
+`SessionExpiryHandler` widens by one question — `ownsRefusalOf(url)` — and the
+**store** answers it, because the store owns the endpoint strings. A list handed
+to the registrar instead would be a copy with nothing keeping it in step, which
+is a claim rather than a mechanism. The hook stays a filter and reads no
+endpoint of its own.
+
+The set is the store's login, its logout, and **the CSRF prime in front of
+either**. The prime is one string beyond the two the review named, and it is the
+identical hole: `login()` already returns a refused prime as
+`{kind: 'refused'}` and `logout()` as `{kind: 'failed'}`, so the hook firing on
+it is the same defect with the same shape. It is spec'd over the real service
+like the other two.
+
+**`me` is deliberately not in the set.** A refused `me` is the one refusal that
+_is_ the session ending underneath the consumer, with nobody waiting on an
+outcome — it stays the hook's, and after D16 the two paths cost one event
+between them. A consequence worth stating because it corrects this package's own
+docs: with the registrar installed, the hook fires **first**, so the event for a
+refused `me` carries the consumer's `returnTo`. The docs claimed it never did.
+
+This does not close WR-1441 and does not touch it: two stores sharing one
+service still both hear a 401 raised for either. It narrows that surface
+slightly — each store now skips its own credential exchange — and the deferred
+fix (scoping a handler to its own store) is unchanged.
