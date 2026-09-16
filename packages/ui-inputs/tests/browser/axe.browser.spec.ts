@@ -39,8 +39,8 @@ const FRUITS: Fruit[] = [
 type FieldSlot = {controlId: string; errorId: string; required: boolean; invalid: boolean; describedby?: string};
 
 /** Compose a control inside FormField — the documented consuming shape (label + error wiring). */
-const renderInField = (make: (slot: FieldSlot) => VNode, fieldProps: Record<string, unknown> = {}) =>
-    render(
+const renderInField = async (make: (slot: FieldSlot) => VNode, fieldProps: Record<string, unknown> = {}) =>
+    await render(
         defineComponent(
             () => () =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -72,7 +72,7 @@ const selectProps = (slot: FieldSlot) => ({
 
 describe('axe-core audits — zero violations, closed and open', () => {
     it('FormField + TextInput, resting', async () => {
-        const screen = renderInField((slot) =>
+        const screen = await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(TextInput as any, {
                 id: slot.controlId,
@@ -88,7 +88,7 @@ describe('axe-core audits — zero violations, closed and open', () => {
     });
 
     it('FormField + TextInput, required with a rendered error (role=alert + describedby pairing)', async () => {
-        const screen = renderInField(
+        const screen = await renderInField(
             (slot) =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
                 h(TextInput as any, {
@@ -106,7 +106,7 @@ describe('axe-core audits — zero violations, closed and open', () => {
 
     it('FormField + SingleSelect, closed and open', async () => {
         const model = ref<number | null>(null);
-        const screen = renderInField((slot) =>
+        const screen = await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(SingleSelect as any, {...selectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
         );
@@ -124,7 +124,7 @@ describe('axe-core audits — zero violations, closed and open', () => {
     // opens a listbox with zero options so the empty row is the ONLY child and audits it.
     it('FormField + SingleSelect, open with NO options (empty listbox is valid — presentational empty row)', async () => {
         const model = ref<number | null>(null);
-        const screen = renderInField((slot) =>
+        const screen = await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(SingleSelect as any, {
                 ...selectProps(slot),
@@ -144,7 +144,7 @@ describe('axe-core audits — zero violations, closed and open', () => {
 
     it('FormField + Combobox, closed and open with a typed filter', async () => {
         const model = ref<number | null>(null);
-        const screen = renderInField((slot) =>
+        const screen = await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(Combobox as any, {...selectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
         );
@@ -158,7 +158,7 @@ describe('axe-core audits — zero violations, closed and open', () => {
 
     it('FormField + MultiSelect, closed with chips and open (aria-multiselectable listbox)', async () => {
         const model = ref<number[]>([2]);
-        const screen = renderInField((slot) =>
+        const screen = await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(MultiSelect as any, {...selectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
         );
@@ -171,7 +171,7 @@ describe('axe-core audits — zero violations, closed and open', () => {
 
     it('FormField + MultiCombobox, closed with chips and open with a typed filter', async () => {
         const model = ref<number[]>([2]);
-        const screen = renderInField((slot) =>
+        const screen = await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(MultiCombobox as any, {...selectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
         );
@@ -186,9 +186,9 @@ describe('axe-core audits — zero violations, closed and open', () => {
     // HAND-WRITTEN value assertion — axe cannot check this (WCAG 4.1.2 *Value* is semantic:
     // there is no axe rule for "N items selected but nothing says so"). A green axe run above
     // must never be read as covering it; this pins the fix so a revert goes red HERE.
-    it('MultiSelect trigger conveys the committed selection while closed — real accessible-value surface', () => {
+    it('MultiSelect trigger conveys the committed selection while closed — real accessible-value surface', async () => {
         const model = ref<number[]>([2, 1]);
-        renderInField((slot) =>
+        await renderInField((slot) =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(MultiSelect as any, {...selectProps(slot), modelValue: model.value, 'onUpdate:modelValue': noop}),
         );
@@ -215,7 +215,7 @@ describe('axe-core audits — checkbox family, zero violations', () => {
     it('Checkbox — self-labelled, unchecked / checked / indeterminate', async () => {
         const checked = ref(false);
         const indeterminate = ref(true);
-        const screen = render(
+        const screen = await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -239,7 +239,7 @@ describe('axe-core audits — checkbox family, zero violations', () => {
     });
 
     it('Checkbox — inside FormField (no field label; own label) with a rendered error', async () => {
-        const screen = renderInField(
+        const screen = await renderInField(
             (slot) =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
                 h(Checkbox as any, {
@@ -259,7 +259,7 @@ describe('axe-core audits — checkbox family, zero violations', () => {
 
     it('Switch — role="switch" on the native checkbox, off and on', async () => {
         const on = ref(false);
-        const screen = render(
+        const screen = await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -281,7 +281,7 @@ describe('axe-core audits — checkbox family, zero violations', () => {
     });
 
     it('CheckboxGroup — fieldset/legend, required (sr-only conveyance) and invalid with an error', async () => {
-        const screen = renderInField(
+        const screen = await renderInField(
             (slot) =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
                 h(CheckboxGroup as any, {
@@ -305,7 +305,7 @@ describe('axe-core audits — checkbox family, zero violations', () => {
 
     it('RadioGroup — role=radiogroup fieldset with aria-required, none and one selected', async () => {
         const choice = ref<number | null>(null);
-        const screen = render(
+        const screen = await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -333,7 +333,7 @@ describe('axe-core audits — checkbox family, zero violations', () => {
 describe('axe-core audits — interactive non-form controls, zero violations', () => {
     it('Pressable — the native button, plain and in toggle mode', async () => {
         const pressed = ref(false);
-        const screen = render(
+        const screen = await render(
             defineComponent(
                 () => () =>
                     h('div', [
@@ -362,7 +362,7 @@ describe('axe-core audits — interactive non-form controls, zero violations', (
     // exists to close. A green axe run above must never be read as covering it.
     it('Pressable renders a REAL button by default — the fallback is opt-in and complete', async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
-        const screen = render(defineComponent(() => () => h(Pressable as any, {label: 'Show example'})));
+        const screen = await render(defineComponent(() => () => h(Pressable as any, {label: 'Show example'})));
         const control = screen.container.firstElementChild as HTMLElement;
 
         expect(control.tagName).toBe('BUTTON');
@@ -371,7 +371,7 @@ describe('axe-core audits — interactive non-form controls, zero violations', (
         expect(control.hasAttribute('tabindex')).toBe(false);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
-        const fallback = render(defineComponent(() => () => h(Pressable as any, {as: 'div', label: 'Row'})));
+        const fallback = await render(defineComponent(() => () => h(Pressable as any, {as: 'div', label: 'Row'})));
         const div = fallback.container.firstElementChild as HTMLElement;
         expect(div.tagName).toBe('DIV');
         expect(div.getAttribute('role')).toBe('button');
@@ -381,7 +381,7 @@ describe('axe-core audits — interactive non-form controls, zero violations', (
 
     it('Disclosure — heading-wrapped trigger, collapsed and expanded', async () => {
         const expanded = ref(false);
-        const screen = render(
+        const screen = await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -412,8 +412,8 @@ describe('axe-core audits — interactive non-form controls, zero violations', (
 
     // The live shape this replaces is `<h2 @click="collapse?.toggle">`. axe cannot see that defect
     // either (a heading with a click handler violates no ARIA rule), so pin the correct output.
-    it('the Disclosure heading CONTAINS the button and never behaves as one', () => {
-        const screen = render(
+    it('the Disclosure heading CONTAINS the button and never behaves as one', async () => {
+        const screen = await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
