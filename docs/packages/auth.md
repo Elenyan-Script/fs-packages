@@ -178,10 +178,17 @@ It also skips a refusal of the store's **own** credential exchange — its login
 `csrf` is **optional and most consumers do not need it**. Laravel 13's `PreventRequestForgery` passes on `Sec-Fetch-Site: same-origin` before the token compare, so a same-origin SPA cannot draw a 419 from a current browser. The residual is genuinely cross-origin consumers and the pre-16.4 Safari tail.
 
 ```typescript
-csrf: {primeUrl: `${globalThis.location.origin}/sanctum/csrf-cookie`},
+// The same origin the service's baseURL is built from — NOT the SPA's own.
+const apiOrigin = import.meta.env.VITE_API_URL.replace(/\/+$/u, '');
+
+csrf: {primeUrl: `${apiOrigin}/sanctum/csrf-cookie`},
 ```
 
-The URL is absolute because Sanctum's cookie route lives at the app root, not under the API base. The prime is memoised **per store** — two stores on one page prime two guards and never share a slot — and a failed prime is forgotten so the next call retries.
+**The prime URL is on the API's host.** Sanctum's cookie is issued by the Laravel app that guards the API, so the route is on that app's origin — at its **root**, rather than under the API path, which is why the URL is absolute rather than relative to the baseURL. Naming the SPA's own origin is the mistake to avoid: it is invisible on a same-origin consumer, where the two are the same string, and wrong in exactly the cross-origin case the `csrf` block exists for.
+
+It is not only a matter of reaching the right route. `createHttpService`'s **`smartCredentials`** option assigns `withCredentials` from a host comparison in a request middleware, which runs _after_ per-request options — so a prime named on any other host arrives **uncredentialed** whatever the store asked for, the `Set-Cookie` is dropped, and every login draws the 419 the prime existed to prevent. Named on the API's host, it stays credentialed. (A cross-origin consumer usually should not enable `smartCredentials` at all, for the same reason it applies to every other request.)
+
+The prime is memoised **per store** — two stores on one page prime two guards and never share a slot — and a failed prime is forgotten so the next call retries.
 
 **Configuring `csrf` changes what every request carries.** `createHttpService` defaults `withXSRFToken` to `false`, so a store that primed a cookie and then sent the service's defaults would forward nothing and draw the 419 the prime existed to prevent. A `csrf`-configured store therefore sends `{timeout, withCredentials: true, withXSRFToken: true}` on **every** request it makes, the prime included — the credentials flag because the prime itself must be allowed to store the cookie across the origin boundary.
 

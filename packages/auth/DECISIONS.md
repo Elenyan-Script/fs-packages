@@ -548,3 +548,65 @@ The near-miss worth recording: keeping the wrapper but having the unregister
 sweep every entry whose `.listener` matches is the fix a careless hand writes,
 and it restores the whole defect. It reds exactly one spec, which is why that
 spec exists.
+
+## D21 — The prime URL is on the API's host, and the docs said otherwise
+
+_Fix round 6, 2026-09-16. Finding `a3f22c91ae31`._
+
+**The invariant: Sanctum's cookie is issued by the Laravel app that guards the
+API, so the prime URL is on the API's host** — at that app's root rather than
+under the API path, which makes it a PATH difference from the base URL and never
+another host.
+
+The mechanism the review found is real, and measured here rather than reasoned
+about. `createHttpService`'s `smartCredentials` option registers a request
+middleware assigning `request.withCredentials = apiUrl.host === requestUrl.host`
+(`packages/http/src/http.ts`). Request middleware runs **after** per-request
+options are merged, so it overwrites what the caller asked for. Against a real
+service with `smartCredentials: true` and a store sending
+`{withCredentials: true, withXSRFToken: true}` on every request (D12):
+
+| prime URL                               | `withCredentials` on the wire |
+| --------------------------------------- | ----------------------------- |
+| the SPA's origin (what the docs showed) | **`false`**                   |
+| the API's origin                        | `true`                        |
+| a relative endpoint                     | `true`                        |
+| the SPA's origin, no `smartCredentials` | `true`                        |
+
+An uncredentialed prime drops the `Set-Cookie`, and every login then draws the
+419 the prime existed to prevent — D12's failure mode by another route.
+
+**The trigger was our own documentation, not the code.** The example read
+``primeUrl: `${globalThis.location.origin}/sanctum/csrf-cookie` `` — the SPA's
+origin — while the prose two lines down said the route "lives at the app root",
+meaning the _Laravel_ app. The two disagreed, and the example is what gets
+copied. It is invisible on a same-origin consumer, where the SPA origin and the
+API host are the same string, and wrong in exactly the cross-origin case the
+`csrf` block is documented as existing for. That is the shape worth remembering:
+**an example that is right for the configuration the option does not apply to.**
+
+Corroboration from a consumer that got there independently: scripthub's own
+`http.ts` primes from `${apiOrigin}` "so it stays one source of truth" and
+carries a comment refusing `smartCredentials` outright, because it "only
+attaches credentials same-origin, which would silently drop the cookie in this
+cross-origin setup". The invariant was already known in the field; only this
+package's docs said otherwise.
+
+**Why the package asserts none of this in code.** The store is never told the
+API base URL — the injected service owns it, and this package creates no
+service and reads no browser global (D4). It cannot compare hosts because it
+knows only one of them. What it _can_ do is refuse to guess, which it already
+does: `primeUrl` is an opaque string it neither builds nor rewrites.
+
+If the assertion belongs anywhere it is **fs-http's** side, where both halves are
+in hand — `smartCredentials` could resolve the request through `getUri` and warn
+when it strips credentials a caller explicitly asked for, rather than silently
+winning. That is a sibling package's decision and is recorded here as an
+observation, not a ticket.
+
+A spec pins the measured behaviour in both directions, because a table in a
+decisions file is a claim and the composition spec is where this package's
+cross-package claims get checked. It binds fs-http's **built** artifact, which is
+what a consumer resolves — so proving it has teeth means mutating fs-http's
+source and rebuilding; a mutation without the rebuild leaves the suite green and
+proves nothing.

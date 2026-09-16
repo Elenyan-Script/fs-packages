@@ -115,6 +115,39 @@ describe('the store and the unauthorized hook over one real http service', () =>
         expect(store.user.value).toBeUndefined();
     });
 
+    it.each([
+        [`${BASE_URL}/sanctum/csrf-cookie`, true],
+        ['https://app.example.test/sanctum/csrf-cookie', false],
+    ])('primes %s with withCredentials %s on a smartCredentials service', async (primeUrl, credentialed) => {
+        const sent: (boolean | undefined)[] = [];
+        mock.onGet(/csrf-cookie$/u).reply((config) => {
+            sent.push(config.withCredentials);
+
+            return [204, {}];
+        });
+        mock.onGet(/\/me$/u).reply(200, {id: 7});
+        mock.onPost(/\/login$/u).reply(200, {});
+        const http = createHttpService(BASE_URL, {smartCredentials: true});
+        const store = createSessionStore<Employer, {email: string}>({
+            guard: 'employer',
+            http,
+            endpoints: ENDPOINTS,
+            parseUser: isEmployer,
+            timeoutMs: TIMEOUT_MS,
+            csrf: {primeUrl},
+        });
+
+        await store.login({email: 'a@b.test'});
+
+        // `smartCredentials` assigns `withCredentials` from a HOST comparison in a
+        // request middleware, which runs after the per-request options the store
+        // sends (D12). A prime named on any other host therefore arrives
+        // uncredentialed, the `Set-Cookie` is dropped, and every login draws the
+        // 419 the prime existed to prevent (DECISIONS D21). This binds fs-http's
+        // BUILT dist, not its src, so teeth-proving it means mutate-and-rebuild.
+        expect(sent).toEqual([credentialed]);
+    });
+
     it('leaves a refused me with the hook, which carries the return-to', async () => {
         const {ended, store} = build();
         mock.onGet(/\/me$/u).replyOnce(200, {id: 7});

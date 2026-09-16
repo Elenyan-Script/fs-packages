@@ -15,9 +15,11 @@ export interface CsrfPrimer {
  * caller retries; a settled one survives until a caller that has just seen a
  * stale-token refusal calls `reset()`.
  *
- * `primeUrl` is absolute at every real consumer — Sanctum's cookie route lives
- * at the app root, not under the API base — but the package treats it as an
- * opaque string and builds none of it.
+ * `primeUrl` is absolute at every real consumer — Sanctum's cookie route lives on
+ * the API's OWN host, at that app's root rather than under the API path, so it is
+ * same-host to the service's base URL and a PATH difference, never another host
+ * (DECISIONS D21). The package treats it as an opaque string and builds none of
+ * it: it is never told the base URL, which the injected service owns.
  *
  * `options` is passed through verbatim, and a caller priming across an origin
  * boundary owes it `withCredentials` — without it the response's `Set-Cookie` is
