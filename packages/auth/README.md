@@ -69,8 +69,8 @@ export const session = createSessionStore<Employer>({
   every request, because fs-http's own default would otherwise drop the token it
   just primed.
 - **It does not swallow your defects.** A throwing `parseUser`, or any rejection
-  that is not an HTTP answer, propagates out of `loadSession()` and `login()`
-  rather than becoming an `outage` or a refusal. `logout()` is the one exception
-  and answers `failed` for everything.
+  that is not an HTTP answer, propagates out of every operation on the store
+  rather than becoming an `outage`, a refusal or a `failed` logout. There are no
+  exceptions to that rule.
 
 Decisions and their costs: `DECISIONS.md` in this package.

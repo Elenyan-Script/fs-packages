@@ -733,18 +733,34 @@ describe('createSessionStore', () => {
             expect(store.state.value).toBe('authenticated');
         });
 
-        it("still answers `failed` for a rejection that is not the transport's", async () => {
-            // Ruling 1 says ANY failure leaves the session standing and answers
-            // `failed`. Logout does not sort defects out of that, unlike login:
-            // the person pressed a thing and needs to know whether to press again,
-            // and a throw here would strand the shell mid-sign-out (DECISIONS D13).
+        it("propagates a rejection that is not the transport's, like every other operation", async () => {
+            // REVERSED in fix round 5 with DECISIONS D13. This spec used to assert
+            // `{kind: 'failed', status: undefined, body: undefined}` here, citing
+            // ruling 1 — but ruling 1 is about the MACHINE moving on success only,
+            // and a rethrown defect moves it no more than a `failed` outcome does.
+            // What the old shape bought was a defect wearing a transport failure's
+            // exact clothes, forever (ADR-0048).
             const store = build();
             await signIn(store);
-            vi.mocked(http.postRequest).mockRejectedValue(new Error('a fault that is not the transport'));
+            const ended = vi.fn();
+            store.onSessionEnd(ended);
+            const defect = new Error('a fault that is not the transport');
+            vi.mocked(http.postRequest).mockRejectedValue(defect);
 
-            const outcome = await store.logout();
+            await expect(store.logout()).rejects.toBe(defect);
+            expect(store.state.value).toBe('authenticated');
+            expect(store.user.value).toEqual({id: 7});
+            expect(ended).not.toHaveBeenCalled();
+        });
 
-            expect(outcome).toEqual({kind: 'failed', status: undefined, body: undefined});
+        it('propagates a defect out of the prime too, without asking the logout endpoint', async () => {
+            const store = build({csrf: {primeUrl: PRIME_URL}});
+            await signIn(store);
+            const defect = new TypeError('the prime itself is broken');
+            vi.mocked(http.getRequest).mockRejectedValue(defect);
+
+            await expect(store.logout()).rejects.toBe(defect);
+            expect(vi.mocked(http.postRequest)).not.toHaveBeenCalled();
             expect(store.state.value).toBe('authenticated');
         });
 
@@ -1047,7 +1063,12 @@ describe('createSessionStore', () => {
             expect(second).toHaveBeenCalledOnce();
         });
 
-        it('registers a listener once however many times it is added', async () => {
+        it('gives every registration its own subscription, however often one function is added', async () => {
+            // REVERSED in fix round 5 with DECISIONS D20. This spec used to assert
+            // ONE call, describing a `Set` keyed on function identity as if it were
+            // a feature. Two components sharing one module-level handler is the
+            // ordinary case, and collapsing them is what let the first unregister
+            // silence the second.
             const store = build();
             await signIn(store);
             const ended = vi.fn();
@@ -1056,7 +1077,34 @@ describe('createSessionStore', () => {
 
             store.handleSessionExpired();
 
+            expect(ended).toHaveBeenCalledTimes(2);
+        });
+
+        it('leaves a second registration of the same function firing after the first unregisters', async () => {
+            const store = build();
+            await signIn(store);
+            const ended = vi.fn();
+            const unregisterFirst = store.onSessionEnd(ended);
+            store.onSessionEnd(ended);
+
+            unregisterFirst();
+            store.handleSessionExpired();
+
             expect(ended).toHaveBeenCalledOnce();
+        });
+
+        it('stops firing once every registration of a function has unregistered', async () => {
+            const store = build();
+            await signIn(store);
+            const ended = vi.fn();
+            const unregisterFirst = store.onSessionEnd(ended);
+            const unregisterSecond = store.onSessionEnd(ended);
+
+            unregisterFirst();
+            unregisterSecond();
+            store.handleSessionExpired();
+
+            expect(ended).not.toHaveBeenCalled();
         });
     });
 

@@ -108,6 +108,15 @@ a library — so the choice is between losing one listener's fault and losing
 every later listener's notification. A consumer that wants the fault surfaced
 catches inside its own listener, where it has a channel.
 
+_Raised and declined three times, 2026-09-16: findings `c27ad7f2bff2` (first
+private round), `fe198b1f98cf` and its duplicate `1d444695cd1f` (second). The
+stance above is unchanged and the recurrence is not evidence against it — it is
+evidence that a silent swallow reads as a defect to anything scanning for one,
+which it should. The follow-up is **WR-1445**: an `onListenerError` sink on the
+store config, at parity with fs-http's `onMiddlewareError` (ADR-0037), in 0.2.0.
+That gives the package the reporting channel it lacks today, at which point this
+entry is superseded rather than re-argued._
+
 ## D9 — `registerAuthGuard` requires an injected `resolveReturnTo`
 
 fs-router's before-route middleware receives the **matched route record**, whose
@@ -141,7 +150,7 @@ and an assertion on the unchanged value for the proxy.
 ## D11 — Six surviving mutants
 
 _Fifth added in fix round 3; sixth in fix round 4, 2026-09-16. Score re-measured
-at each: 98.00 → 97.71 → 97.61._
+at each: 98.00 → 97.71 → 97.61 → 97.67 (fix round 5 added no new survivor; the six below are exactly the six measured)._
 
 The mutation gate is 90. Five survivors have no observable behaviour change; one
 (the fifth) has one nobody can provoke on purpose. Named here so a later reader
@@ -217,13 +226,35 @@ Two places were laundering one:
   `refused` on `login()`. Both now rethrow it. fs-http rejects a non-axios error
   untouched, so nothing legitimate arrives that way.
 
-**`logout()` is the deliberate exception.** Ruling 1 (D1) says _any_ failure
-leaves the session standing and answers `failed`, and that is kept literally: a
-throw out of `logout()` would strand a shell mid-sign-out with the session still
-live and nothing to render. The person's question — press it again? — is answered
-either way. A defect there is therefore still swallowed into the `failed`
-outcome. This is the one place the rule above does not reach, and it is a
-ruling's word, not an oversight.
+**`logout()` was carved out, and the carve-out is withdrawn.**
+
+_Amended 2026-09-16, fix round 5._
+
+The original entry exempted `logout()`: any failure, a defect included, became
+`{kind: 'failed'}` with `status` and `body` `undefined`, on the argument that
+ruling 1 (D1) says _any_ failure leaves the session standing, and that a throw
+would strand a shell mid-sign-out.
+
+The argument does not hold, and it is worth saying why rather than just
+reversing it. **Ruling 1 is about the MACHINE** — it moves on success only. A
+rethrown defect moves the machine exactly as much as a `failed` outcome does,
+which is not at all: `state` and `user` are untouched either way and no listener
+fires. So nothing in ruling 1 was ever being protected by swallowing the defect.
+What the carve-out actually bought was a programming fault wearing a transport
+failure's precise clothes — `failed` with no status and no body is what a
+network drop looks like, the one shape a consumer is most likely to render as
+"try again" and never read (ADR-0048). A third round of review found it, and it
+took three rounds because the entry stated the exemption confidently.
+
+Both `catch` blocks in `logout()` — the prime's and the POST's — now rethrow
+when the rejection is not an axios error, exactly as `login()` does. The
+`failed` outcome is unchanged for every rejection that IS one, so the person's
+question (press it again?) is still answered whenever there is anything to
+answer it with. `statusOf`/`bodyOf`, which existed only to read a status off
+something that might not have one, are gone with it.
+
+The rule now has **no exceptions**: a defect propagates from every operation on
+this store.
 
 ## D14 — `signed_out` clears the user; `outage` keeps it
 
@@ -483,3 +514,37 @@ This does not close WR-1441 and does not touch it: two stores sharing one
 service still both hear a 401 raised for either. It narrows that surface
 slightly — each store now skips its own credential exchange — and the deferred
 fix (scoping a handler to its own store) is unchanged.
+
+## D20 — Every `onSessionEnd` registration is its own subscription
+
+_Fix round 5, 2026-09-16._
+
+`listeners` was a `Set` of the listener functions themselves, so registration
+was keyed on function identity. Two registrations of the **same** function
+collapsed into one entry, and the unregister returned by either removed it for
+both.
+
+That is not an exotic shape. A module-level handler — one `signOut` function
+imported by two components — is the ordinary way a consumer writes this. Both
+components register; one unmounts and calls its unregister; the other is still
+mounted and **silently stops hearing session ends**. Nothing throws and nothing
+logs; the session simply ends one day and that component does not react. It is
+the ADR-0048 failure mode arriving as silence.
+
+The fix is one entry per **registration**: `onSessionEnd` puts the listener in a
+fresh `{listener}` wrapper, adds that, and the unregister closure deletes the
+wrapper it captured. Two registrations are two entries, fire twice, and
+unregister independently. Insertion order is preserved (a `Set` iterates in
+insertion order), and D8's per-listener `try/catch` is untouched — it wraps the
+same call, one indirection further in.
+
+The cost, stated plainly: **a listener registered twice is now called twice per
+event.** That is the correct reading of two subscriptions, and the old
+behaviour was not a de-duplication feature — no entry, no doc and no spec ever
+argued for it; a spec asserted it, which is not the same thing, and that spec is
+reversed here. A consumer that wants one call registers once.
+
+The near-miss worth recording: keeping the wrapper but having the unregister
+sweep every entry whose `.listener` matches is the fix a careless hand writes,
+and it restores the whole defect. It reds exactly one spec, which is why that
+spec exists.

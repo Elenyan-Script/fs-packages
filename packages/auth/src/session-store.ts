@@ -38,10 +38,6 @@ const SUPERSEDED: MeOutcome = {status: undefined, body: undefined};
  */
 type TransportFailure = {response?: {status: number; data: unknown}};
 
-const statusOf = (error: unknown): number | undefined => (isAxiosError(error) ? error.response?.status : undefined);
-
-const bodyOf = (error: unknown): unknown => (isAxiosError(error) ? error.response?.data : undefined);
-
 export const createSessionStore = <TUser, TCredentials = Record<string, unknown>>(
     config: CreateSessionStoreConfig<TUser>,
 ): SessionStore<TUser, TCredentials> => {
@@ -80,7 +76,13 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 
     const state = ref<SessionState>('loading');
     const user = ref<TUser | undefined>() as Ref<TUser | undefined>;
-    const listeners = new Set<(event: SessionEndEvent) => void>();
+    /*
+     * One entry per REGISTRATION, not per function. Keyed on the function itself,
+     * two components sharing one module-level handler collapsed into a single
+     * entry and the first unregister silenced the other — a still-mounted
+     * consumer that simply stops hearing session ends (DECISIONS D20).
+     */
+    const listeners = new Set<{listener: (event: SessionEndEvent) => void}>();
 
     /*
      * The read epoch. A `me` answer writes the machine only if no later read was
@@ -145,7 +147,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 
         if (!ending) return;
 
-        for (const listener of listeners) {
+        for (const {listener} of listeners) {
             try {
                 listener(event);
             } catch {
@@ -266,10 +268,10 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         return http.postRequest(endpoints.login, credentials, requestOptions);
     };
 
-    const failedLogout = (error: unknown): LogoutOutcome => ({
+    const failedLogout = (error: TransportFailure): LogoutOutcome => ({
         kind: 'failed',
-        status: statusOf(error),
-        body: bodyOf(error),
+        status: error.response?.status,
+        body: error.response?.data,
     });
 
     const refusalOf = (error: TransportFailure): LoginOutcome => ({
@@ -344,6 +346,8 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
                 try {
                     await primer.prime();
                 } catch (error) {
+                    if (!isAxiosError(error)) throw error;
+
                     /*
                      * The cookie route refusing says nothing about the session, and
                      * the logout endpoint was never asked — so this is ruling 1 in
@@ -357,6 +361,14 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
                 await http.postRequest(endpoints.logout, {}, requestOptions);
             } catch (error) {
                 /*
+                 * A defect is nobody's outcome, here as everywhere else (D13). It
+                 * used to become `failed` with an undefined status — indistinguishable
+                 * from a transport failure, which is the one shape a consumer is most
+                 * likely to shrug at (ADR-0048).
+                 */
+                if (!isAxiosError(error)) throw error;
+
+                /*
                  * Ruling 1 (D1), amended 2026-09-16. Every failure still leaves the
                  * session standing and answers `failed`, and nothing probes the
                  * server afterwards — because the ruling protects a cookie the
@@ -365,7 +377,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
                  * the caller is told `signed_out`, and the session ends as an
                  * EXPIRY, because the server ended it and the person only found out.
                  */
-                if (!isSignedOutStatus(statusOf(error))) return failedLogout(error);
+                if (!isSignedOutStatus(error.response?.status)) return failedLogout(error);
 
                 endSession({reason: 'expired'});
 
@@ -394,10 +406,12 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         },
 
         onSessionEnd(listener) {
-            listeners.add(listener);
+            const subscription = {listener};
+
+            listeners.add(subscription);
 
             return () => {
-                listeners.delete(listener);
+                listeners.delete(subscription);
             };
         },
     };

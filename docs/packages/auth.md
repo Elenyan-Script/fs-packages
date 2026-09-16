@@ -90,7 +90,7 @@ showRefusal(outcome.status, outcome.body); // your copy, your call
 
 If another read overtakes the confirming `me` — a focus revalidation, a second navigation's own `loadSession()` — `login()` waits for _that_ read to settle and answers from what it wrote. It never reports a refusal for a login the server accepted. `refused` with no `status` is therefore the machine's answer and not a discarded one: read `state.value` alongside the outcome, where `outage` means the API did not answer and anything else means the server refused.
 
-A rejection that is not an HTTP answer — a thrown `parseUser`, a programming error — **propagates out of `login()` and `loadSession()`**. That is a defect, not an outcome, and dressing it as `refused` would show a wrong-password screen for a fault nobody would ever read. `logout()` is the deliberate exception; see below.
+A rejection that is not an HTTP answer — a thrown `parseUser`, a programming error — **propagates out of every operation on the store**, `login()`, `loadSession()` and `logout()` alike. That is a defect, not an outcome, and dressing it as `refused` would show a wrong-password screen for a fault nobody would ever read.
 
 ### `logout()`
 
@@ -104,7 +104,7 @@ The machine moves to `signed_out` on success, and nothing probes the server behi
 
 So a **401 or 419 from the logout endpoint** is not a failure: it is the server saying it does not honour the cookie. `logout()` answers `{kind: 'signed_out'}`, the session ends once with `{reason: 'expired'}` and no `returnTo` (the server ended it; the button only found out), and nothing probes afterwards. Every other failure — transport, 5xx, 403, 422, 429 — stays `failed` with the session standing. A refused **CSRF prime** is always `failed`: the cookie route is not the logout endpoint, and the logout endpoint was never asked (`DECISIONS.md` D1, amended). A success still moves the machine when there was nothing live to end — a stale button press asks the server and reports what it said — but it fires **no** `onSessionEnd`, because one session ends once (`DECISIONS.md` D16).
 
-Unlike `login()`, `logout()` answers `failed` for **every** failure, a defect included — it never throws. A throw here would strand a shell mid-sign-out with the session still live and nothing to render, and the only question the person can act on is whether to press again.
+`logout()` answers `failed` for every failure the transport **reports** — a status, or an axios rejection saying nothing answered — so the only question the person can act on, press it again, always has an answer. A rejection that is not the transport's is a defect and **propagates**, exactly as it does out of `login()`: it moves the machine no more than a `failed` outcome would, and `failed` with no status is indistinguishable from a network drop (`DECISIONS.md` D13, amended).
 
 ### `handleSessionExpired(returnTo?)`
 
@@ -124,7 +124,7 @@ const unregister = session.onSessionEnd(({reason, returnTo}) => {
 });
 ```
 
-Returns an unregister function. Fired once per session end, for `logout` and `expired`, and never for a `challenge`. A listener that throws does not stop the others, and its fault is not reported anywhere — catch inside your own listener if you want it surfaced.
+Returns an unregister function, and **every registration is its own subscription**: registering one function twice fires it twice per event and gives you two unregisters, each independent. Fired once per session end, for `logout` and `expired`, and never for a `challenge`. A listener that throws does not stop the others, and its fault is not reported anywhere — catch inside your own listener if you want it surfaced.
 
 ## `resolveSafeRedirect(candidate)`
 
