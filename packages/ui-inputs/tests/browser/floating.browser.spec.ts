@@ -33,9 +33,9 @@ const FRUITS: Fruit[] = [
 const anchorOf = (popup: HTMLElement): HTMLElement => popup.closest('.ui-menu-anchor') as HTMLElement;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
-const renderSelect = (component: any) => {
+const renderSelect = async (component: any) => {
     const model = ref<number | null>(null);
-    render(
+    await render(
         defineComponent(
             () => () =>
                 h(component, {
@@ -53,7 +53,7 @@ const renderSelect = (component: any) => {
 
 describe('floating-ui reality — the open menu is actually positioned', () => {
     it('positions the SingleSelect menu below the trigger with real non-zero dimensions', async () => {
-        renderSelect(SingleSelect);
+        await renderSelect(SingleSelect);
         const trigger = document.getElementById('fruit') as HTMLElement;
 
         await userEvent.click(trigger);
@@ -77,7 +77,7 @@ describe('floating-ui reality — the open menu is actually positioned', () => {
     });
 
     it('positions the Combobox menu below the input (shared useListbox floating config)', async () => {
-        renderSelect(Combobox);
+        await renderSelect(Combobox);
         const input = document.getElementById('fruit') as HTMLElement;
 
         await userEvent.click(input);
@@ -98,7 +98,7 @@ describe('floating-ui hide() — the open menu follows its clipped-away trigger'
     // floating styles; this walks the real scroll geometry in Chromium, both directions.
     it('hides the menu when the trigger scrolls out of its clipping ancestor, and shows it again on scroll-back', async () => {
         const model = ref<number | null>(null);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h('div', {id: 'clip', style: 'height: 120px; overflow: auto; position: relative;'}, [
@@ -141,7 +141,7 @@ describe('floating-ui hide() — the open menu follows its clipped-away trigger'
 describe('listbox teleport — the open menu escapes a clipping ancestor (KD-1136)', () => {
     it('sizes the teleported menu to the TRIGGER, not to the teleport target', async () => {
         const model = ref<number | null>(null);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h('div', {style: 'width: 200px;'}, [
@@ -173,7 +173,7 @@ describe('listbox teleport — the open menu escapes a clipping ancestor (KD-113
 
     it('renders the SingleSelect menu on document.body, fully visible above a following sibling', async () => {
         const model = ref<number | null>(null);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h('div', {id: 'page'}, [
@@ -222,7 +222,7 @@ describe('listbox teleport — the open menu escapes a clipping ancestor (KD-113
     // the dialog cannot clip, while the anchor stays a DOM descendant and keeps the top layer.
     it('escapes overflow:hidden on the dialog it teleported into', async () => {
         const model = ref<number | null>(null);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h('dialog', {id: 'dlg', open: true, style: 'height: 60px; overflow: hidden; padding: 0;'}, [
@@ -259,7 +259,7 @@ describe('listbox teleport — the open menu escapes a clipping ancestor (KD-113
 
     it('stays inside a control nested in a dialog, with no dialog lookup', async () => {
         const model = ref<number | null>(null);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h('dialog', {id: 'dlg', open: true}, [
