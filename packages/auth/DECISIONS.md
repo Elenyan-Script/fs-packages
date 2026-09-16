@@ -114,11 +114,13 @@ proxy and still refuses a write, and the declared `Readonly<Ref<…>>` still
 refuses one at compile time. Both are spec'd — a `@ts-expect-error` for the type
 and an assertion on the unchanged value for the proxy.
 
-## D11 — Four surviving mutants, all equivalent
+## D11 — Five surviving mutants
 
-The mutation gate is 90 and the package scores 98.00. The four survivors are
-mutants with no observable behaviour change, named here so a later reader does
-not re-derive them:
+_Fifth survivor added in fix round 3, 2026-09-16; score re-measured at 97.71._
+
+The mutation gate is 90 and the package scores 97.71. Four survivors have no
+observable behaviour change; the fifth (added last) has one nobody can provoke
+on purpose. Named here so a later reader does not re-derive them:
 
 - `issued += 1` → `issued -= 1`. The read epoch needs distinct successive values
   and a last-writer comparison; counting down satisfies both.
@@ -128,6 +130,16 @@ not re-derive them:
   reads both properties back as `undefined` either way.
 - `status !== undefined && SIGNED_OUT_STATUSES.has(status)` → `true && …`. The
   guard exists for the type checker; `Set.has(undefined)` is already `false`.
+- `while (outcome === SUPERSEDED && latestRead !== awaited)` → `while (true && …)`
+  in `readUntilSettled` (D17). **Not equivalent, and not deterministically
+  killable.** It would make `login()` wait for a newer read even when its own
+  confirm answered — a state that needs a read to be issued in the gap between
+  `runLoadSession`'s epoch check and `login()`'s next microtask, which no spec
+  can arrange without pinning the scheduler rather than the behaviour. The
+  condition is still load-bearing: without it a busy app's `login()` chases each
+  later read in turn. The _other_ half of the same line is killed three times
+  over — `&&` → `||`, `latestRead !== awaited` → `true`, and an emptied loop body
+  all TIME OUT, because dropping the break wedges the event loop outright.
 
 ## D12 — A primed store forwards what it primed
 
@@ -242,3 +254,147 @@ that staled those too would be a worse bug than the one it fixed.
 Seed: lokalekeuze ruled this shape as **LK-0291 rule 2** — _"the slot is
 invalidated BEFORE the write"_ (`apps/employer/domains/auth/stores/session.ts`,
 `logout()`). Same hazard, same ordering, arrived at independently there first.
+
+## D16 — One session, one event
+
+_Fix round 3, 2026-09-16._
+
+`logout()` fired a session-end event after every successful POST, whatever the
+machine was doing. `endSession` cleared and notified unconditionally, and the
+only guard anywhere read `state.value === 'authenticated'` inside
+`handleSessionExpired`. So one session could produce two events:
+
+1. `logout()`'s POST is in flight.
+2. A 401 on another request runs `handleSessionExpired` synchronously inside
+   fs-http's error loop — `{reason: 'expired'}` fires, state is `signed_out`.
+3. The logout POST resolves and `{reason: 'logout'}` fires on top of it.
+
+Two logouts pressed together do the same thing, and a consumer whose listener
+navigates or shows a notice does it twice. The ADR says once, the README says
+once, and nothing checked.
+
+**The invariant: a session-end event is emitted only for a transition out of a
+session that was live.** It is enforced in `endSession` and nowhere else,
+because `endSession` is the only place a listener is ever called — the second
+logout, the logout behind an expiry and the 401 arriving at a login screen are
+all the same question, asked once. The machine is read **before** the clear,
+which is what keeps it single-flight: the first caller through writes
+`signed_out` with no await in between, so N callers in one tick produce one
+event.
+
+**`outage` holds a session.** It retains the user (D14), so a shell is still
+naming somebody; ending it is a transition a consumer has to hear about. This
+is the half a guard written as "authenticated only" gets wrong, and it is
+spec'd from both directions — a logout out of `outage` fires, a logout out of
+`signed_out` does not. It also means `handleSessionExpired` now acts from
+`outage`, where before it returned: a 401 is the server saying the identity
+that state still names is gone.
+
+**The clear stays unconditional.** A successful logout moves the machine
+whatever it was doing — the server has spoken, and leaving it `loading` would
+state a session nobody has. Only the _notification_ is gated. Reverting to
+"return before clearing" reds eight specs, several of them older than this
+round: the bare-clear path a 401 takes when nothing is live depends on it.
+
+`handleSessionExpired` keeps an early return, reading the same predicate. That
+is not a second copy of the guard but a different question — it is a registrar
+callback about _some_ request, so a 401 arriving while nothing is live must
+leave the machine entirely alone. Clearing there would take a read ticket
+(D15) and stale a `loadSession()` in flight, signing somebody out of an initial
+load on the strength of a refusal that was never about their session.
+
+**What a stale button press does:** the POST is still sent. Ruling 1 says the
+machine moves on success and says nothing about skipping the request, and the
+caller still gets `{kind: 'signed_out'}` — the server did sign it out. What it
+does not get is an event for a session that had already ended.
+
+## D17 — A superseded login confirm waits for the machine
+
+_Fix round 3, 2026-09-16._
+
+`login()` awaited its confirming `me` and then decided from `state.value`
+alone. `runLoadSession` returns the `SUPERSEDED` sentinel when a newer read took
+a ticket while it was in flight — an answer nothing was done with — and
+`login()` read that as if it were an answer. Two consequences, one harmful:
+
+- **A false refusal.** A consumer-initiated `loadSession()` (focus
+  revalidation, a concurrent navigation's own read) overlaps the confirm. The
+  confirm comes back superseded and unparsed, the newer read has not landed,
+  `state` is still `loading`, and `login()` answers
+  `{kind: 'refused', status: undefined, body: undefined}` for a login the
+  server accepted. The person is shown a failure and their session is live.
+- **A stale success.** Login A's confirm is superseded by login B's; A reads
+  B's `authenticated` and reports success.
+
+**The invariant: `login()` answers from a machine state that a read issued at
+or after its own POST has settled** — never from a `loading` left by a read
+still in flight, and never from an answer that was discarded.
+
+The store now tracks the newest read as the promise that settles it. A confirm
+that comes back superseded waits for that one instead, and repeats while it is
+overtaken too. The false refusal disappears, because by the time `login()`
+reads the machine the read that overtook its confirm has written it.
+
+**Promise identity, not a second epoch.** `issued` stays the only ordering
+authority; the tracked promise answers a different question — is there a newer
+_read_ still to settle. It has to be a different question, because
+`clearSession` also takes a ticket and issues **no read** (D15). A confirm
+superseded by a sign-out therefore has nothing left to wait for, and a wait
+keyed on the epoch alone would wait forever. Removing that one condition wedges
+the process rather than failing a test, which is why it has a spec of its own.
+
+**The alternative that was rejected:** having `login()` issue a _fresh_ read on
+a supersede. It costs an extra request, and two overlapping logins would
+supersede each other's re-reads in turn — an unbounded exchange to answer a
+question neither caller can act on.
+
+**The residual is accepted and not solved.** Two logins from one browser both
+answer `authenticated`, and `user` holds the later one. Whose credentials won
+is a server fact; the package cannot name it, and D5 already says `login()`
+answers what the machine says. The alternative is a fourth `LoginOutcome` arm
+that every consumer must switch on, for a case the package would have to
+describe wrongly. Two concurrent logins are a consumer's double-submit, and
+single-flighting `login()` is a different invariant from this one — if it is
+wanted, it is argued here first.
+
+**How a consumer tells an outage refusal from a credential refusal.**
+`{kind: 'refused', status: undefined}` is what both a transport failure and a
+discarded answer used to look like. The discriminator is the machine, which is
+readable alongside the outcome and — this is the part that is new — has settled
+by the time `login()` answers: `state.value === 'outage'` is "the API did not
+answer", anything else is a refusal the server issued. `user` follows D14 and
+is retained across an outage.
+
+## D18 — Two findings deferred, by name
+
+_Fix round 3, 2026-09-16. Recorded so nobody re-derives them from the code._
+
+Both were raised on PR #255, both are mechanically real, and both are deferred
+rather than fixed. Refute-and-defer, with a row each.
+
+**(a) `registerUnauthorizedMiddleware` is unscoped — WR-1441.** A 401 on a
+service shared by two stores runs every registered handler, so one guard's
+refusal expires the other guard's session. No fleet consumer has that shape:
+kendo builds two `createHttpService` instances, isms and lokalekeuze register
+one guard per SPA bundle. This package's own two-store spec — _"gives two
+stores their own prime, so one cannot spend the other's"_ — shares a stub
+`http` object as a **convenience of the fixture, and states no contract**; it
+is about the primer, not about the middleware. The fix is an additive option
+(scope the handler to a URL predicate or the store's guard) in 0.2.0, where it
+can be designed rather than bolted on.
+
+**(b) An older logout response can clear a newer login — WR-1442.** A logout
+POST still in flight when a login completes clears the session the login just
+established. Concurrent login and logout from one browser is a double-press,
+the client cannot order effects the server applied in its own order, and the
+failing direction is fail-safe: the consumer is signed out locally while the
+cookie is live, and the next `me` restores the session. Ordering mutations
+would need a mutation epoch beside the read epoch, which is in tension with
+ruling 1 (the machine moves on logout SUCCESS only) and is a design item, not a
+fix round.
+
+WR-1442 also carries the three-round trigger: **a fourth concurrency finding on
+`session-store.ts` is a spike, not another fix round.** Three rounds have now
+each found a real interleaving defect in this one file, which is the shape the
+war room's three-round rule exists to catch — the next one is a question about
+the design, not a patch.

@@ -69,7 +69,7 @@ A body `parseUser` refuses is an **outage, never signed out**. Rendering a broke
 
 **Ending a session stales every read issued before it.** A `me` still in flight when `logout()` succeeds or the session expires commits nothing when it lands — it cannot hand back guarded access on the strength of an answer that predates the sign-out. Reads issued _after_ the end are untouched, so signing back in works normally.
 
-A **401 or 419 on a session that was `authenticated`** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}` and no `returnTo` (`loadSession` does not know where the person is). From any other state the same status writes `signed_out` and fires nothing — arriving at a login screen is not an event.
+A **401 or 419 on a session that was live** is an expiry: the user is cleared and `onSessionEnd` fires once with `{reason: 'expired'}` and no `returnTo` (`loadSession` does not know where the person is). Live means `authenticated`, and also `outage` — an outage keeps the user, so a shell is still naming somebody and the 401 says that person is gone. From `loading` or `signed_out` the same status writes `signed_out` and fires nothing: arriving at a login screen is not an event.
 
 ### `login(credentials)`
 
@@ -88,6 +88,8 @@ showRefusal(outcome.status, outcome.body); // your copy, your call
 - `{kind: 'challenge', body}` — the login answered without establishing a session (a 2FA step, say). **No state change**, and no `sessionEnd` event. You interpret `body`.
 - `{kind: 'refused', status, body}` — everything else, including a `me` that did not authenticate afterwards.
 
+If another read overtakes the confirming `me` — a focus revalidation, a second navigation's own `loadSession()` — `login()` waits for _that_ read to settle and answers from what it wrote. It never reports a refusal for a login the server accepted. `refused` with no `status` is therefore the machine's answer and not a discarded one: read `state.value` alongside the outcome, where `outage` means the API did not answer and anything else means the server refused.
+
 A rejection that is not an HTTP answer — a thrown `parseUser`, a programming error — **propagates out of `login()` and `loadSession()`**. That is a defect, not an outcome, and dressing it as `refused` would show a wrong-password screen for a fault nobody would ever read. `logout()` is the deliberate exception; see below.
 
 ### `logout()`
@@ -98,13 +100,13 @@ const outcome = await session.logout();
 if (outcome.kind === 'failed') showRetryable(); // the session is still live
 ```
 
-The machine moves to `signed_out` on **success only**, and nothing probes the server behind a failure. A cookie the server still honours must never be reported as gone.
+The machine moves to `signed_out` on **success only**, and nothing probes the server behind a failure. A cookie the server still honours must never be reported as gone. A success still moves the machine when there was nothing live to end — a stale button press asks the server and reports what it said — but it fires **no** `onSessionEnd`, because one session ends once (`DECISIONS.md` D16).
 
 Unlike `login()`, `logout()` answers `failed` for **every** failure, a defect included — it never throws. A throw here would strand a shell mid-sign-out with the session still live and nothing to render, and the only question the person can act on is whether to press again.
 
 ### `handleSessionExpired(returnTo?)`
 
-Ends the session and fires `onSessionEnd` with `{reason: 'expired', returnTo}`. **Single-flight**: the first caller flips the state synchronously, so N concurrent 401s produce exactly one event. Called for you by [`registerUnauthorizedMiddleware`](#registerunauthorizedmiddleware).
+Ends the session and fires `onSessionEnd` with `{reason: 'expired', returnTo}`. **Single-flight**: the first caller flips the state synchronously, so N concurrent 401s produce exactly one event. With nothing live to end it does nothing at all — it leaves even the read epoch alone, so a 401 for somebody else's request cannot stale a `loadSession()` in flight. Called for you by [`registerUnauthorizedMiddleware`](#registerunauthorizedmiddleware).
 
 ### `setUser(next)`
 

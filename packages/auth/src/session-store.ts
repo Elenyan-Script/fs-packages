@@ -102,9 +102,34 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         user.value = undefined;
     };
 
-    /** The transition out of a LIVE session: clears it, then tells the consumer once. */
+    /*
+     * The states that still hold a session to end. `outage` is one of them: it
+     * retains the user (D14), so a shell is still naming somebody, and the thing
+     * that ends it is a transition a consumer has to hear about. `loading` and
+     * `signed_out` hold nothing.
+     */
+    const holdsSession = (): boolean => state.value === 'authenticated' || state.value === 'outage';
+
+    /*
+     * The transition out of a live session: clears it, then tells the consumer
+     * ONCE. The guard on the notification lives here and nowhere else, because
+     * here is the only place a listener is ever called — a logout landing behind
+     * an expiry, a second logout, a 401 arriving at a login screen all reach this
+     * function, and all of them are the same question: was there a session to end?
+     * The machine is read BEFORE the clear, which is what makes it single-flight:
+     * the first caller through writes `signed_out` with no await in between
+     * (ADR-0050 § 2).
+     *
+     * The clear itself is unconditional. A successful logout moves the machine
+     * whatever it was doing — the server has spoken, and leaving it `loading`
+     * would state a session nobody has.
+     */
     const endSession = (event: SessionEndEvent): void => {
+        const ending = holdsSession();
+
         clearSession();
+
+        if (!ending) return;
 
         for (const listener of listeners) {
             try {
@@ -119,6 +144,20 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
             }
         }
     };
+
+    /*
+     * The newest read, as the promise that settles it. A confirming `me` that
+     * comes back SUPERSEDED reported nothing, so `login()` cannot answer from the
+     * machine yet — `state` is whatever the read that overtook it has not written.
+     * It waits for this one instead.
+     *
+     * Promise identity, not a second epoch: `issued` stays the only ordering
+     * authority. The question this answers is different — is there a newer READ
+     * still to settle — and it has to be, because `clearSession` also takes a
+     * ticket and issues no read. A confirm superseded by a sign-out has nothing
+     * left to wait for, and a chain keyed on the epoch alone would wait forever.
+     */
+    let latestRead: Promise<MeOutcome> = Promise.resolve(SUPERSEDED);
 
     const runLoadSession = async (): Promise<MeOutcome> => {
         const ticket = nextEpoch();
@@ -143,15 +182,14 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 
             if (status !== undefined && SIGNED_OUT_STATUSES.has(status)) {
                 /*
-                 * A revalidating `me` that answers 401 or 419 on a LIVE session is an
-                 * expiry, and 401 and 419 are one class with one action (ADR-0050 § 3).
-                 * Every exit from `authenticated` therefore runs through `endSession`,
-                 * so the consumer hears about this one exactly as it hears about a
-                 * refusal caught mid-request. From any other state nothing ended — the
-                 * arrival at a login screen is not an event.
+                 * A revalidating `me` that answers 401 or 419 is an expiry, and the
+                 * two statuses are one class with one action (ADR-0050 § 3). It goes
+                 * through `endSession` from every state: that function decides whether
+                 * there was a session to end, so the consumer hears about this one
+                 * exactly as it hears about a refusal caught mid-request, and hears
+                 * nothing when a login screen's own `me` answers 401.
                  */
-                if (state.value === 'authenticated') endSession({reason: 'expired'});
-                else clearSession();
+                endSession({reason: 'expired'});
             } else {
                 /*
                  * `user` is deliberately RETAINED on an outage. The ADR is explicit that
@@ -179,6 +217,33 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         }
 
         return {status: response.status, body: response.data};
+    };
+
+    /** Every read this store makes goes through here, so `latestRead` is never behind one. */
+    const startRead = (): Promise<MeOutcome> => {
+        const read = runLoadSession();
+
+        latestRead = read;
+
+        return read;
+    };
+
+    /*
+     * A read, and then whatever overtook it, until an answer the store actually
+     * acted on comes back. `login()` needs that answer and not its own: a
+     * superseded confirm leaves `state` mid-flight, and reading the machine there
+     * reports a refusal for a login the server accepted.
+     */
+    const readUntilSettled = async (): Promise<MeOutcome> => {
+        let awaited = startRead();
+        let outcome = await awaited;
+
+        while (outcome === SUPERSEDED && latestRead !== awaited) {
+            awaited = latestRead;
+            outcome = await awaited;
+        }
+
+        return outcome;
     };
 
     const attemptLogin = async (credentials: TCredentials): Promise<{data: unknown}> => {
@@ -215,7 +280,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
         },
 
         async loadSession() {
-            await runLoadSession();
+            await startRead();
         },
 
         async login(credentials) {
@@ -247,7 +312,7 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 
             if (isChallenge(response.data)) return {kind: 'challenge', body: response.data};
 
-            const me = await runLoadSession();
+            const me = await readUntilSettled();
 
             if (state.value === 'authenticated') return {kind: 'authenticated'};
 
@@ -276,12 +341,14 @@ export const createSessionStore = <TUser, TCredentials = Record<string, unknown>
 
         handleSessionExpired(returnTo) {
             /*
-             * The single-flight guard, and the reason it is a synchronous read of the
-             * machine rather than a flag: the first caller flips `state` before any
-             * await, so N concurrent 401s landing in one tick produce exactly one
-             * event (ADR-0050 § 2).
+             * Not a second copy of `endSession`'s guard but a different question,
+             * and the reason it is asked here: this is a registrar callback about
+             * SOME request, so a 401 arriving while nothing is live must leave the
+             * machine entirely alone. Clearing would take a read ticket and stale a
+             * `loadSession()` in flight — signing somebody out of an initial load on
+             * the strength of a refusal that was never about their session.
              */
-            if (state.value !== 'authenticated') return;
+            if (!holdsSession()) return;
 
             endSession({reason: 'expired', returnTo});
         },

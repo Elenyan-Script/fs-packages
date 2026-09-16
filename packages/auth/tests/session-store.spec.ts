@@ -63,6 +63,45 @@ const signIn = async (store: SessionStore<Employer, Credentials>): Promise<void>
     expect(store.state.value).toBe('authenticated');
 };
 
+/**
+ * A request the spec answers by hand. `issued` settles the moment the store
+ * makes the call, which is what keeps the interleavings below deterministic — a
+ * spec that instead guessed how many microtasks deep the call sits would pass
+ * or fail for reasons that have nothing to do with the store.
+ */
+/**
+ * A macrotask boundary. Every microtask queued up to this point has run by the
+ * time it returns, so a spec can state what the store has NOT done yet without
+ * counting `await`s — which is the difference between pinning the behaviour and
+ * pinning the scheduler.
+ */
+const flushMicrotasks = () =>
+    new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+    });
+
+const heldRequest = () => {
+    let answer: (response: {data: unknown; status: number}) => void = () => undefined;
+    let fail: (error: unknown) => void = () => undefined;
+    let markIssued: () => void = () => undefined;
+
+    const issued = new Promise<void>((resolve) => {
+        markIssued = resolve;
+    });
+
+    return {
+        issued,
+        implementation: () =>
+            new Promise<{data: unknown; status: number}>((resolve, reject) => {
+                answer = resolve;
+                fail = reject;
+                markIssued();
+            }),
+        answerWith: (body: unknown, status = 200) => answer(respondWith(body, status)),
+        rejectWith: (error: unknown) => fail(error),
+    };
+};
+
 beforeEach(() => {
     http = createHttpStub();
 });
@@ -487,6 +526,146 @@ describe('createSessionStore', () => {
             expect(outcome).toEqual({kind: 'refused', status: 419, body: undefined});
             expect(vi.mocked(http.postRequest)).toHaveBeenCalledTimes(1);
         });
+
+        describe('when another read overtakes its confirming me', () => {
+            it('waits for that read rather than refusing a login the server accepted', async () => {
+                const store = build();
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+                const confirm = heldRequest();
+                const revalidation = heldRequest();
+                vi.mocked(http.getRequest)
+                    .mockImplementationOnce(confirm.implementation)
+                    .mockImplementationOnce(revalidation.implementation);
+
+                const pending = store.login(credentials);
+                const answered = vi.fn();
+                void pending.then(answered);
+                await confirm.issued;
+                const consumerRead = store.loadSession();
+
+                confirm.answerWith({id: 7});
+                await flushMicrotasks();
+
+                // The confirm reported nothing and the read that overtook it has
+                // not landed, so there is no machine to answer from yet.
+                expect(answered).not.toHaveBeenCalled();
+
+                revalidation.answerWith({id: 9});
+
+                await expect(pending).resolves.toEqual({kind: 'authenticated'});
+                await consumerRead;
+                expect(store.user.value).toEqual({id: 9});
+            });
+
+            it("refuses with the newer read's status, never with the discarded answer's", async () => {
+                const store = build();
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+                const confirm = heldRequest();
+                const revalidation = heldRequest();
+                vi.mocked(http.getRequest)
+                    .mockImplementationOnce(confirm.implementation)
+                    .mockImplementationOnce(revalidation.implementation);
+
+                const pending = store.login(credentials);
+                const answered = vi.fn();
+                void pending.then(answered);
+                await confirm.issued;
+                const consumerRead = store.loadSession();
+
+                confirm.answerWith({id: 7});
+                await flushMicrotasks();
+
+                expect(answered).not.toHaveBeenCalled();
+
+                revalidation.rejectWith(axiosRejection(401, {message: 'gone'}));
+
+                await expect(pending).resolves.toEqual({kind: 'refused', status: 401, body: {message: 'gone'}});
+                await consumerRead;
+                expect(store.state.value).toBe('signed_out');
+            });
+
+            it('answers from the machine an outage left, which is how the two refusals are told apart', async () => {
+                const store = build();
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+                const confirm = heldRequest();
+                const revalidation = heldRequest();
+                vi.mocked(http.getRequest)
+                    .mockImplementationOnce(confirm.implementation)
+                    .mockImplementationOnce(revalidation.implementation);
+
+                const pending = store
+                    .login(credentials)
+                    .then((outcome) => ({outcome, stateWhenAnswered: store.state.value}));
+
+                await confirm.issued;
+                const consumerRead = store.loadSession();
+
+                confirm.answerWith({id: 7});
+                await flushMicrotasks();
+
+                revalidation.rejectWith(axiosRejection(undefined));
+
+                // `refused` with no status is what a transport failure and a
+                // discarded answer both look like. The machine is the
+                // discriminator, and it has settled by the time login answers.
+                await expect(pending).resolves.toEqual({
+                    outcome: {kind: 'refused', status: undefined, body: undefined},
+                    stateWhenAnswered: 'outage',
+                });
+                await consumerRead;
+                expect(store.user.value).toBeUndefined();
+            });
+
+            it('answers both of two overlapping logins with the identity that won', async () => {
+                const store = build();
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+                const first = heldRequest();
+                const second = heldRequest();
+                vi.mocked(http.getRequest)
+                    .mockImplementationOnce(first.implementation)
+                    .mockImplementationOnce(second.implementation);
+
+                const a = store.login(credentials);
+                const answeredA = vi.fn();
+                void a.then(answeredA);
+                await first.issued;
+                const b = store.login({email: 'c@d.test', password: 'other'});
+                await second.issued;
+
+                first.answerWith({id: 7});
+                await flushMicrotasks();
+
+                expect(answeredA).not.toHaveBeenCalled();
+
+                second.answerWith({id: 9});
+
+                // The accepted residual (DECISIONS D17). Whose credentials won is a
+                // server fact this package cannot name, so both callers are told
+                // what the machine says and exactly ONE identity is readable.
+                await expect(a).resolves.toEqual({kind: 'authenticated'});
+                await expect(b).resolves.toEqual({kind: 'authenticated'});
+                expect(store.user.value).toEqual({id: 9});
+            });
+
+            it('refuses when a sign-out overtook it, rather than waiting for a read that will never come', async () => {
+                const store = build();
+                await signIn(store);
+                const confirm = heldRequest();
+                vi.mocked(http.getRequest).mockImplementationOnce(confirm.implementation);
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith({}));
+
+                const pending = store.login(credentials);
+                await confirm.issued;
+
+                // `clearSession` takes a read ticket and issues no read, so this
+                // confirm is superseded by something that will never answer.
+                await store.logout();
+                confirm.answerWith({id: 7});
+
+                await expect(pending).resolves.toEqual({kind: 'refused', status: undefined, body: undefined});
+                expect(store.state.value).toBe('signed_out');
+            });
+        });
     });
 
     describe('logout', () => {
@@ -580,6 +759,91 @@ describe('createSessionStore', () => {
             expect(vi.mocked(http.postRequest)).not.toHaveBeenCalled();
             expect(store.state.value).toBe('authenticated');
         });
+
+        describe('one session, one event', () => {
+            it('adds nothing to an expiry that ended the session while the logout was in flight', async () => {
+                const store = build();
+                await signIn(store);
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                const post = heldRequest();
+                vi.mocked(http.postRequest).mockImplementationOnce(post.implementation);
+
+                const pending = store.logout();
+                await post.issued;
+                store.handleSessionExpired('/employers/7');
+                post.answerWith('');
+
+                // The server did sign it out, so the OUTCOME still says so. What
+                // the expiry already spent is the event, not the request.
+                await expect(pending).resolves.toEqual({kind: 'signed_out'});
+                expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired', returnTo: '/employers/7'});
+            });
+
+            it('fires once for two logouts that both succeed', async () => {
+                const store = build();
+                await signIn(store);
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+                const outcomes = await Promise.all([store.logout(), store.logout()]);
+
+                expect(outcomes).toEqual([{kind: 'signed_out'}, {kind: 'signed_out'}]);
+                expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'logout'});
+            });
+
+            it('ends a session the API stopped answering for — an outage still holds one', async () => {
+                const store = build();
+                await signIn(store);
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(500));
+                await store.loadSession();
+                expect(store.state.value).toBe('outage');
+                expect(store.user.value).toEqual({id: 7});
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+                const outcome = await store.logout();
+
+                expect(outcome).toEqual({kind: 'signed_out'});
+                expect(store.state.value).toBe('signed_out');
+                expect(store.user.value).toBeUndefined();
+                expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'logout'});
+            });
+
+            it('moves the machine on a success that ended nothing — the server has spoken', async () => {
+                const store = build();
+                expect(store.state.value).toBe('loading');
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+                const outcome = await store.logout();
+
+                expect(outcome).toEqual({kind: 'signed_out'});
+                expect(store.state.value).toBe('signed_out');
+                expect(ended).not.toHaveBeenCalled();
+            });
+
+            it('still posts, but fires nothing, when no session was left to end', async () => {
+                const store = build();
+                vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(401));
+                await store.loadSession();
+                expect(store.state.value).toBe('signed_out');
+                const ended = vi.fn();
+                store.onSessionEnd(ended);
+                vi.mocked(http.postRequest).mockResolvedValue(respondWith(''));
+
+                const outcome = await store.logout();
+
+                // Ruling 1 says nothing about skipping the request: a stale button
+                // press still asks the server, and still answers what it said.
+                expect(outcome).toEqual({kind: 'signed_out'});
+                expect(vi.mocked(http.postRequest)).toHaveBeenCalledWith('auth/employer/logout', {}, PLAIN_OPTIONS);
+                expect(ended).not.toHaveBeenCalled();
+            });
+        });
     });
 
     describe('handleSessionExpired', () => {
@@ -629,6 +893,22 @@ describe('createSessionStore', () => {
 
             expect(store.state.value).toBe('loading');
             expect(ended).not.toHaveBeenCalled();
+        });
+
+        it('ends a session in outage — the identity it still names is gone', async () => {
+            const store = build();
+            await signIn(store);
+            vi.mocked(http.getRequest).mockRejectedValue(axiosRejection(500));
+            await store.loadSession();
+            expect(store.state.value).toBe('outage');
+            const ended = vi.fn();
+            store.onSessionEnd(ended);
+
+            store.handleSessionExpired('/employers/7');
+
+            expect(store.state.value).toBe('signed_out');
+            expect(store.user.value).toBeUndefined();
+            expect(ended).toHaveBeenCalledExactlyOnceWith({reason: 'expired', returnTo: '/employers/7'});
         });
     });
 
