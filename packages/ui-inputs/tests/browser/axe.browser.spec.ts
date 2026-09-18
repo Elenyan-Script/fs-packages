@@ -56,8 +56,14 @@ const renderInField = (make: (slot: FieldSlot) => VNode, fieldProps: Record<stri
     render(
         defineComponent(
             () => () =>
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
-                h(FormField as any, {label: 'Fruit', id: 'fruit', ...fieldProps}, {default: make}),
+                // Wrap in <main> + <h1> so axe page-level rules (landmark-one-main,
+                // page-has-heading-one, region) find valid document structure and do not
+                // fire against the test harness page rather than the component under audit.
+                h('main', [
+                    h('h1', 'Test form'),
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
+                    h(FormField as any, {label: 'Fruit', id: 'fruit', ...fieldProps}, {default: make}),
+                ]),
         ),
     );
 
