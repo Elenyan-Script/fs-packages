@@ -37,6 +37,7 @@ export default defineConfig({
                     collapsed: false,
                     items: [
                         {text: 'fs-theme', link: '/packages/theme'},
+                        {text: 'fs-auth', link: '/packages/auth'},
                         {text: 'fs-loading', link: '/packages/loading'},
                         {text: 'fs-toast', link: '/packages/toast'},
                         {text: 'fs-dialog', link: '/packages/dialog'},
