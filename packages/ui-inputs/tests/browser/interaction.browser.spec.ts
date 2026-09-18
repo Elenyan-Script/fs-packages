@@ -57,9 +57,9 @@ afterEach(() => {
  * (chips render, the trigger text updates) exactly as in a consuming app.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
-const renderControlled = <V>(component: any, initial: V, props: Record<string, unknown>) => {
+const renderControlled = async <V>(component: any, initial: V, props: Record<string, unknown>) => {
     const model = ref(initial);
-    render(
+    await render(
         defineComponent(
             () => () =>
                 h(component, {
@@ -109,7 +109,7 @@ const groupHeaders = (variant: 'groupselect' | 'groupcombobox'): string[] =>
 
 describe('SingleSelect — real keyboard walk', () => {
     it('Tab focuses, Enter opens, ArrowDown navigates, Enter commits, menu closes', async () => {
-        const model = renderControlled<number | null>(SingleSelect, null, {});
+        const model = await renderControlled<number | null>(SingleSelect, null, {});
         const trigger = document.getElementById('fruit') as HTMLButtonElement;
 
         await userEvent.tab();
@@ -129,7 +129,7 @@ describe('SingleSelect — real keyboard walk', () => {
     });
 
     it('Escape dismisses without committing', async () => {
-        const model = renderControlled<number | null>(SingleSelect, null, {});
+        const model = await renderControlled<number | null>(SingleSelect, null, {});
 
         await userEvent.tab();
         await userEvent.keyboard('{ArrowDown}'); // opens
@@ -146,7 +146,7 @@ describe('SingleSelect — real keyboard walk', () => {
         outside.textContent = 'outside';
         document.body.append(outside);
         cleanupTargets.push(outside);
-        renderControlled<number | null>(SingleSelect, null, {});
+        await renderControlled<number | null>(SingleSelect, null, {});
 
         await userEvent.click(document.getElementById('fruit') as HTMLElement);
         expect(menu()).not.toBeNull();
@@ -158,7 +158,7 @@ describe('SingleSelect — real keyboard walk', () => {
 
 describe('disabled controls genuinely receive no events', () => {
     it('a forced real click on a disabled trigger dispatches no click — the menu never opens', async () => {
-        renderControlled<number | null>(SingleSelect, null, {disabled: true});
+        await renderControlled<number | null>(SingleSelect, null, {disabled: true});
         const trigger = document.getElementById('fruit') as HTMLButtonElement;
         expect(trigger.matches(':disabled')).toBe(true);
 
@@ -170,7 +170,7 @@ describe('disabled controls genuinely receive no events', () => {
     });
 
     it('real Tab skips a disabled trigger entirely, so keyboard input cannot reach it', async () => {
-        renderControlled<number | null>(SingleSelect, null, {disabled: true});
+        await renderControlled<number | null>(SingleSelect, null, {disabled: true});
         const trigger = document.getElementById('fruit') as HTMLButtonElement;
 
         await userEvent.tab();
@@ -181,7 +181,7 @@ describe('disabled controls genuinely receive no events', () => {
     });
 
     it('a disabled TextInput receives no typed input', async () => {
-        const model = renderControlled<string | null>(TextInput, 'untouched', {
+        const model = await renderControlled<string | null>(TextInput, 'untouched', {
             options: undefined,
             label: undefined,
             disabled: true,
@@ -198,7 +198,7 @@ describe('disabled controls genuinely receive no events', () => {
     });
 
     it('a disabled chip-remove button removes nothing on a forced real click', async () => {
-        const model = renderControlled<number[]>(MultiSelect, [2, 3], {disabled: true});
+        const model = await renderControlled<number[]>(MultiSelect, [2, 3], {disabled: true});
         const remove = document.querySelector<HTMLButtonElement>('.ui-multiselect__chip-remove');
         expect(remove).not.toBeNull();
         expect((remove as HTMLButtonElement).matches(':disabled')).toBe(true);
@@ -210,7 +210,7 @@ describe('disabled controls genuinely receive no events', () => {
 
 describe('Combobox — real typing filters and commits', () => {
     it('typing filters the list, ArrowDown highlights, Enter commits and closes', async () => {
-        const model = renderControlled<number | null>(Combobox, null, {});
+        const model = await renderControlled<number | null>(Combobox, null, {});
         const input = document.getElementById('fruit') as HTMLInputElement;
 
         await userEvent.click(input);
@@ -231,7 +231,7 @@ describe('Combobox — real typing filters and commits', () => {
     });
 
     it('opening a filled combobox shows the FULL list and the first keystroke replaces the label (WR-0576)', async () => {
-        renderControlled<number | null>(Combobox, 3, {}); // Mango committed
+        await renderControlled<number | null>(Combobox, 3, {}); // Mango committed
         const input = document.getElementById('fruit') as HTMLInputElement;
         expect(input.value).toBe('Mango');
 
@@ -251,7 +251,7 @@ describe('Combobox — real typing filters and commits', () => {
     });
 
     it('Escape reverts a half-typed query to the committed label', async () => {
-        renderControlled<number | null>(Combobox, 2, {});
+        await renderControlled<number | null>(Combobox, 2, {});
         const input = document.getElementById('fruit') as HTMLInputElement;
         expect(input.value).toBe('Apricot');
 
@@ -267,7 +267,7 @@ describe('Combobox — real typing filters and commits', () => {
 
 describe('MultiSelect — chips, toggle-stays-open, Backspace', () => {
     it('a real click commit toggles membership while the menu STAYS open, and chips render', async () => {
-        const model = renderControlled<number[]>(MultiSelect, [], {});
+        const model = await renderControlled<number[]>(MultiSelect, [], {});
         const trigger = document.getElementById('fruit') as HTMLButtonElement;
 
         await userEvent.click(trigger);
@@ -287,7 +287,7 @@ describe('MultiSelect — chips, toggle-stays-open, Backspace', () => {
     });
 
     it('a real click on a chip-remove button removes that chip and never opens the menu', async () => {
-        const model = renderControlled<number[]>(MultiSelect, [2, 3], {});
+        const model = await renderControlled<number[]>(MultiSelect, [2, 3], {});
         expect(document.querySelectorAll('.ui-multiselect__chip')).toHaveLength(2);
 
         await userEvent.click(document.querySelector('.ui-multiselect__chip-remove') as HTMLElement);
@@ -296,7 +296,7 @@ describe('MultiSelect — chips, toggle-stays-open, Backspace', () => {
     });
 
     it('Backspace on the focused trigger pops the LAST committed value', async () => {
-        const model = renderControlled<number[]>(MultiSelect, [2, 3], {});
+        const model = await renderControlled<number[]>(MultiSelect, [2, 3], {});
         const trigger = document.getElementById('fruit') as HTMLButtonElement;
 
         await userEvent.click(trigger); // real click focuses the trigger (and opens the menu)
@@ -313,7 +313,7 @@ describe('MultiSelect — chips, toggle-stays-open, Backspace', () => {
 
 describe('MultiCombobox — input-as-trigger, real focus choreography', () => {
     it('a real Tab focuses the input and focus alone OPENS the list', async () => {
-        renderControlled<number[]>(MultiCombobox, [], {});
+        await renderControlled<number[]>(MultiCombobox, [], {});
         const input = document.getElementById('fruit') as HTMLInputElement;
 
         await userEvent.tab();
@@ -322,7 +322,7 @@ describe('MultiCombobox — input-as-trigger, real focus choreography', () => {
     });
 
     it('a real click commit toggles membership, STAYS open, clears the query, and REFOCUSES the input', async () => {
-        const model = renderControlled<number[]>(MultiCombobox, [], {});
+        const model = await renderControlled<number[]>(MultiCombobox, [], {});
         const input = document.getElementById('fruit') as HTMLInputElement;
 
         await userEvent.click(input);
@@ -339,7 +339,7 @@ describe('MultiCombobox — input-as-trigger, real focus choreography', () => {
     });
 
     it('real Backspace with an empty query pops the last chip', async () => {
-        const model = renderControlled<number[]>(MultiCombobox, [2, 3], {});
+        const model = await renderControlled<number[]>(MultiCombobox, [2, 3], {});
         const input = document.getElementById('fruit') as HTMLInputElement;
 
         await userEvent.click(input);
@@ -416,7 +416,7 @@ describe('RadioGroup — NATIVE roving focus and arrow-key selection', () => {
         // the radio-group roving (shared `name`) and that the model mirrors the native
         // change events the arrows fire. Only a real browser can prove this: happy-dom
         // implements no radio roving at all.
-        const model = renderControlled<number | null>(RadioGroup, null, {optionLabel: 'name', label: 'Fruit'});
+        const model = await renderControlled<number | null>(RadioGroup, null, {optionLabel: 'name', label: 'Fruit'});
         const radioAt = (index: number) => document.getElementById(`fruit-opt-${index}`) as HTMLInputElement;
 
         await userEvent.tab();
@@ -437,7 +437,7 @@ describe('RadioGroup — NATIVE roving focus and arrow-key selection', () => {
     });
 
     it('the checked radio is the single tab stop — Tab leaves the rest of the group alone', async () => {
-        renderControlled<number | null>(RadioGroup, FRUITS[2].id, {optionLabel: 'name', label: 'Fruit'});
+        await renderControlled<number | null>(RadioGroup, FRUITS[2].id, {optionLabel: 'name', label: 'Fruit'});
         const checked = document.getElementById('fruit-opt-2') as HTMLInputElement;
 
         await userEvent.tab();
@@ -451,7 +451,11 @@ describe('RadioGroup — NATIVE roving focus and arrow-key selection', () => {
 
 describe('checkbox family — disabled controls genuinely receive no events', () => {
     it('a forced real click on a disabled Checkbox never checks it', async () => {
-        const model = renderControlled<boolean>(Checkbox, false, {options: undefined, label: 'Accept', disabled: true});
+        const model = await renderControlled<boolean>(Checkbox, false, {
+            options: undefined,
+            label: 'Accept',
+            disabled: true,
+        });
         const input = document.getElementById('fruit') as HTMLInputElement;
         expect(input.matches(':disabled')).toBe(true);
 
@@ -461,7 +465,7 @@ describe('checkbox family — disabled controls genuinely receive no events', ()
     });
 
     it('real Tab skips a disabled Switch; keyboard input cannot reach it', async () => {
-        const model = renderControlled<boolean>(Switch, false, {
+        const model = await renderControlled<boolean>(Switch, false, {
             options: undefined,
             label: 'Notifications',
             disabled: true,
@@ -475,7 +479,7 @@ describe('checkbox family — disabled controls genuinely receive no events', ()
     });
 
     it('an enabled Switch toggles with a real keyboard Space', async () => {
-        const model = renderControlled<boolean>(Switch, false, {options: undefined, label: 'Notifications'});
+        const model = await renderControlled<boolean>(Switch, false, {options: undefined, label: 'Notifications'});
         const input = document.getElementById('fruit') as HTMLInputElement;
 
         await userEvent.tab();
@@ -489,10 +493,10 @@ describe('checkbox family — disabled controls genuinely receive no events', ()
 });
 
 /** Mount a Pressable with a spy click handler; returns the recorded activation count. */
-const renderPressable = (props: Record<string, unknown>) => {
+const renderPressable = async (props: Record<string, unknown>) => {
     const clicks = ref(0);
     const pressed = ref<boolean | undefined>(props.pressed as boolean | undefined);
-    render(
+    await render(
         defineComponent(
             () => () =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -516,7 +520,7 @@ const control = () => document.querySelector('.ui-pressable') as HTMLElement;
 
 describe('Pressable — real keyboard walk', () => {
     it('Tab focuses the native button, and BOTH Enter and Space activate it', async () => {
-        const {clicks} = renderPressable({});
+        const {clicks} = await renderPressable({});
 
         await userEvent.tab();
         expect(document.activeElement).toBe(control()); // focusable with no author tabindex
@@ -531,7 +535,7 @@ describe('Pressable — real keyboard walk', () => {
     });
 
     it('toggle mode flips aria-pressed from the keyboard', async () => {
-        const {pressed} = renderPressable({pressed: false});
+        const {pressed} = await renderPressable({pressed: false});
         expect(control().getAttribute('aria-pressed')).toBe('false');
 
         await userEvent.tab();
@@ -544,12 +548,12 @@ describe('Pressable — real keyboard walk', () => {
     });
 
     it('a plain Pressable carries NO aria-pressed — it is an action, not a toggle', async () => {
-        renderPressable({});
+        await renderPressable({});
         expect(control().hasAttribute('aria-pressed')).toBe(false);
     });
 
     it('real Tab skips a disabled Pressable, and a forced real click activates nothing', async () => {
-        const {clicks} = renderPressable({disabled: true});
+        const {clicks} = await renderPressable({disabled: true});
         expect(control().matches(':disabled')).toBe(true);
 
         await userEvent.tab();
@@ -563,7 +567,7 @@ describe('Pressable — real keyboard walk', () => {
     });
 
     it('the `as` fallback is reachable and activatable by the SAME keys as the native button', async () => {
-        const {clicks} = renderPressable({as: 'div'});
+        const {clicks} = await renderPressable({as: 'div'});
         expect(control().tagName).toBe('DIV');
 
         await userEvent.tab();
@@ -578,7 +582,7 @@ describe('Pressable — real keyboard walk', () => {
     });
 
     it('real Tab skips a disabled `as` fallback', async () => {
-        const {clicks} = renderPressable({as: 'div', disabled: true});
+        const {clicks} = await renderPressable({as: 'div', disabled: true});
 
         await userEvent.tab();
         expect(document.activeElement).not.toBe(control());
@@ -591,10 +595,10 @@ describe('Pressable — real keyboard walk', () => {
  * A fallback nested in an ancestor that has its own @click — the shape a clickable row or card
  * actually has in a consuming app, and the only shape in which the hit-testing defect is visible.
  */
-const renderNestedFallback = (props: Record<string, unknown> = {}) => {
+const renderNestedFallback = async (props: Record<string, unknown> = {}) => {
     const ancestorClicks = ref(0);
     const controlClicks = ref(0);
-    render(
+    await render(
         defineComponent(
             () => () =>
                 h(
@@ -631,9 +635,9 @@ const renderNestedFallback = (props: Record<string, unknown> = {}) => {
  * docblock promises it never does.
  */
 describe('Pressable — a consumer `type` cannot make it submit a surrounding form', () => {
-    const renderInForm = (children: (submits: {value: number}) => unknown[]) => {
+    const renderInForm = async (children: (submits: {value: number}) => unknown[]) => {
         const submits = ref(0);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h(
@@ -652,7 +656,7 @@ describe('Pressable — a consumer `type` cannot make it submit a surrounding fo
     };
 
     it('stays inert as a submitter even when handed type="submit"', async () => {
-        const submits = renderInForm(() => [
+        const submits = await renderInForm(() => [
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(Pressable as any, {label: 'Go', type: 'submit'}),
         ]);
@@ -667,7 +671,7 @@ describe('Pressable — a consumer `type` cannot make it submit a surrounding fo
         // Both halves of the control. It proves the fixture can submit at all (so the zero above
         // means "withheld", not "no form here"), and it is the platform fact that makes the chassis
         // `type` load-bearing: a button in a form with no type of its own IS a submit button.
-        const submits = renderInForm(() => [h('button', {id: 'native-submit'}, 'Go')]);
+        const submits = await renderInForm(() => [h('button', {id: 'native-submit'}, 'Go')]);
 
         await userEvent.click(document.getElementById('native-submit') as HTMLElement);
 
@@ -683,9 +687,9 @@ describe('Pressable — a consumer `type` cannot make it submit a surrounding fo
  * (measured pre-fix in this browser: `TYPE=submit SUBMITS=1 EXPANDED=true`).
  */
 describe('Disclosure — a consumer `type` cannot make its trigger submit a surrounding form', () => {
-    const renderInForm = (children: () => unknown[]) => {
+    const renderInForm = async (children: () => unknown[]) => {
         const submits = ref(0);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h(
@@ -704,7 +708,7 @@ describe('Disclosure — a consumer `type` cannot make its trigger submit a surr
     };
 
     it('toggles WITHOUT submitting, even when handed type="submit"', async () => {
-        const submits = renderInForm(() => [
+        const submits = await renderInForm(() => [
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
             h(Disclosure as any, {id: 'submitting', label: 'Details', type: 'submit'}),
         ]);
@@ -720,7 +724,7 @@ describe('Disclosure — a consumer `type` cannot make its trigger submit a surr
     });
 
     it('POSITIVE CONTROL — a plain <button> in the same fixture DOES submit it', async () => {
-        const submits = renderInForm(() => [h('button', {id: 'disclosure-native-submit'}, 'Go')]);
+        const submits = await renderInForm(() => [h('button', {id: 'disclosure-native-submit'}, 'Go')]);
 
         await userEvent.click(document.getElementById('disclosure-native-submit') as HTMLElement);
 
@@ -736,7 +740,7 @@ const hitAtCentre = (element: Element): Element | null => {
 
 describe('Pressable — a real pointer on a disabled `as` fallback', () => {
     it('activates NEITHER the control nor its ancestor — inert, not transparent', async () => {
-        const {ancestorClicks, controlClicks} = renderNestedFallback({disabled: true});
+        const {ancestorClicks, controlClicks} = await renderNestedFallback({disabled: true});
 
         // The measurement that found the defect. `pointer-events: none` used to take the control
         // out of hit-testing, so this returned the ANCESTOR and a real pointer never touched the
@@ -753,7 +757,7 @@ describe('Pressable — a real pointer on a disabled `as` fallback', () => {
     });
 
     it('POSITIVE CONTROL — the same fixture, enabled, reaches both handlers', async () => {
-        const {ancestorClicks, controlClicks} = renderNestedFallback();
+        const {ancestorClicks, controlClicks} = await renderNestedFallback();
 
         expect(hitAtCentre(control())).toBe(control());
 
@@ -770,10 +774,10 @@ describe('Pressable — a real pointer on a disabled `as` fallback', () => {
  * the native Enter-to-click translation on the nested button nor the text insertion on the nested
  * input, so it can prove the event was left alone but not that the field still WORKS.
  */
-const renderFallbackWithChildren = () => {
+const renderFallbackWithChildren = async () => {
     const rowClicks = ref(0);
     const childClicks = ref(0);
-    render(
+    await render(
         defineComponent(
             () => () =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -812,7 +816,7 @@ describe('Pressable — a real keyboard inside an `as` fallback', () => {
         // The headline harm, end to end through the real CDP input pipeline. Unguarded, every
         // Space keydown reaching the root was preventDefault()ed AND converted into an activation
         // of the row: the field could not hold a space, and the row fired on every attempt.
-        const {rowClicks} = renderFallbackWithChildren();
+        const {rowClicks} = await renderFallbackWithChildren();
 
         // Focus, never click: a real pointer click on the child would bubble to the row's own
         // @click and confound the count with an activation that has nothing to do with keys.
@@ -832,7 +836,7 @@ describe('Pressable — a real keyboard inside an `as` fallback', () => {
         // child's real click BUBBLING, exactly as a mouse click on that button does. A consumer who
         // does not want it writes `@click.stop` on the child. Asserted as an equivalence against
         // the mouse rather than as a bare number, so the two causes cannot be confused.
-        const {rowClicks, childClicks} = renderFallbackWithChildren();
+        const {rowClicks, childClicks} = await renderFallbackWithChildren();
 
         remove().focus();
         await userEvent.keyboard('{Enter}');
@@ -849,7 +853,7 @@ describe('Pressable — a real keyboard inside an `as` fallback', () => {
     it('POSITIVE CONTROL — the ROW itself still activates on Enter and Space', async () => {
         // Same fixture, same focusable children, focus on the root. Without this the two zeros
         // above are equally consistent with a fallback that has stopped answering the keyboard.
-        const {rowClicks} = renderFallbackWithChildren();
+        const {rowClicks} = await renderFallbackWithChildren();
 
         control().focus();
         expect(document.activeElement).toBe(control());
@@ -866,9 +870,9 @@ describe('Disclosure — real keyboard walk', () => {
     const trigger = () => document.getElementById('details') as HTMLButtonElement;
     const panel = () => document.getElementById('details-panel') as HTMLElement;
 
-    const renderDisclosure = (props: Record<string, unknown> = {}) => {
+    const renderDisclosure = async (props: Record<string, unknown> = {}) => {
         const expanded = ref(false);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -892,7 +896,7 @@ describe('Disclosure — real keyboard walk', () => {
     };
 
     it('Tab focuses the trigger, Enter and Space flip aria-expanded and show/hide the region', async () => {
-        const expanded = renderDisclosure();
+        const expanded = await renderDisclosure();
 
         // The heading is NOT the tab stop — the button inside it is.
         await userEvent.tab();
@@ -914,7 +918,7 @@ describe('Disclosure — real keyboard walk', () => {
     });
 
     it('the heading itself is inert — only the button it contains is reachable', async () => {
-        renderDisclosure();
+        await renderDisclosure();
         const heading = document.querySelector('h2') as HTMLElement;
 
         // The defect being replaced is a heading that behaves as a control: not focusable, and a
@@ -924,7 +928,7 @@ describe('Disclosure — real keyboard walk', () => {
     });
 
     it('real Tab skips a disabled Disclosure trigger', async () => {
-        const expanded = renderDisclosure({disabled: true});
+        const expanded = await renderDisclosure({disabled: true});
 
         await userEvent.tab();
         expect(document.activeElement).not.toBe(trigger());
@@ -949,10 +953,10 @@ describe('Disclosure — real keyboard walk', () => {
 describe("Disclosure — a disabled trigger and the consumer's fall-through @click", () => {
     const trigger = () => document.getElementById('leaky') as HTMLButtonElement;
 
-    const renderWithConsumerClick = (disabled: boolean) => {
+    const renderWithConsumerClick = async (disabled: boolean) => {
         const consumerClicks = ref(0);
         const expanded = ref(false);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -981,8 +985,8 @@ describe("Disclosure — a disabled trigger and the consumer's fall-through @cli
         element.dispatchEvent(new MouseEvent('click', {bubbles: true}));
     };
 
-    it('runs NEITHER toggle nor the consumer handler — inert, not merely un-toggling', () => {
-        const {consumerClicks, expanded} = renderWithConsumerClick(true);
+    it('runs NEITHER toggle nor the consumer handler — inert, not merely un-toggling', async () => {
+        const {consumerClicks, expanded} = await renderWithConsumerClick(true);
 
         dispatchClick(trigger());
 
@@ -993,7 +997,7 @@ describe("Disclosure — a disabled trigger and the consumer's fall-through @cli
     });
 
     it('POSITIVE CONTROL — the same fixture, enabled, runs BOTH', async () => {
-        const {consumerClicks, expanded} = renderWithConsumerClick(false);
+        const {consumerClicks, expanded} = await renderWithConsumerClick(false);
 
         dispatchClick(trigger());
 
@@ -1013,8 +1017,8 @@ describe("Disclosure — a disabled trigger and the consumer's fall-through @cli
  * about what it does.
  */
 describe('Pressable — `as` must not repaint a structural display', () => {
-    const renderRows = () => {
-        render(
+    const renderRows = async () => {
+        await render(
             defineComponent(
                 () => () =>
                     h('table', [
@@ -1035,8 +1039,8 @@ describe('Pressable — `as` must not repaint a structural display', () => {
         };
     };
 
-    it('leaves as="tr" a table row, and its cells table cells', () => {
-        const {row, cell} = renderRows();
+    it('leaves as="tr" a table row, and its cells table cells', async () => {
+        const {row, cell} = await renderRows();
 
         expect(row.tagName).toBe('TR');
         // The defect: `inline-flex` here takes the row out of the table's layout algorithm and the
@@ -1047,13 +1051,13 @@ describe('Pressable — `as` must not repaint a structural display', () => {
         expect(getComputedStyle(row).cursor).toBe('pointer');
     });
 
-    it('POSITIVE CONTROL — the ordinary button and as="div" keep the chassis display', () => {
-        renderPressable({});
+    it('POSITIVE CONTROL — the ordinary button and as="div" keep the chassis display', async () => {
+        await renderPressable({});
         expect(getComputedStyle(control()).display).toBe('inline-flex');
     });
 
-    it('POSITIVE CONTROL — as="div" keeps it too', () => {
-        renderPressable({as: 'div'});
+    it('POSITIVE CONTROL — as="div" keeps it too', async () => {
+        await renderPressable({as: 'div'});
         expect(getComputedStyle(control()).display).toBe('inline-flex');
     });
 });
@@ -1075,9 +1079,9 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });
 
-    const renderAnchor = (disabled: boolean) => {
+    const renderAnchor = async (disabled: boolean) => {
         const clicks = ref(0);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -1098,8 +1102,8 @@ describe('Pressable — a disabled control against real platform behaviour', () 
     const dispatchClick = (element: Element): boolean =>
         element.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
 
-    it('does not FOLLOW an as="a" href while disabled — the fallback has no native disabled', () => {
-        const clicks = renderAnchor(true);
+    it('does not FOLLOW an as="a" href while disabled — the fallback has no native disabled', async () => {
+        const clicks = await renderAnchor(true);
 
         const notCancelled = dispatchClick(control());
 
@@ -1108,8 +1112,8 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         expect(clicks.value).toBe(0);
     });
 
-    it('POSITIVE CONTROL — the same anchor, enabled, DOES navigate and run the handler', () => {
-        const clicks = renderAnchor(false);
+    it('POSITIVE CONTROL — the same anchor, enabled, DOES navigate and run the handler', async () => {
+        const clicks = await renderAnchor(false);
 
         dispatchClick(control());
 
@@ -1130,7 +1134,7 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         document.addEventListener('keydown', record);
 
         try {
-            const {clicks} = renderPressable({as: 'div', disabled: true});
+            const {clicks} = await renderPressable({as: 'div', disabled: true});
             const element = control();
 
             await userEvent.click(element, {force: true});
@@ -1145,9 +1149,9 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         }
     });
 
-    const renderWithInteractiveChild = (disabled: boolean) => {
+    const renderWithInteractiveChild = async (disabled: boolean) => {
         const childClicks = ref(0);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h(
@@ -1176,7 +1180,7 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         // The leak a bubble-phase stop on the root cannot close: the child's own handler runs on the
         // way UP, before the root ever sees the event, and the anchor's navigation is a default
         // action no `stopImmediatePropagation()` withholds.
-        const childClicks = renderWithInteractiveChild(true);
+        const childClicks = await renderWithInteractiveChild(true);
         const link = document.getElementById('child-link') as HTMLElement;
         const button = document.getElementById('child-button') as HTMLElement;
 
@@ -1191,7 +1195,7 @@ describe('Pressable — a disabled control against real platform behaviour', () 
     });
 
     it('POSITIVE CONTROL — the same children, enabled, navigate and fire', async () => {
-        const childClicks = renderWithInteractiveChild(false);
+        const childClicks = await renderWithInteractiveChild(false);
         const link = document.getElementById('child-link') as HTMLElement;
         const button = document.getElementById('child-button') as HTMLElement;
 
@@ -1202,10 +1206,10 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         expect(location.hash).toBe(NAV);
     });
 
-    const renderWithKeyHandlers = (disabled: boolean) => {
+    const renderWithKeyHandlers = async (disabled: boolean) => {
         const keydowns = ref(0);
         const keyups = ref(0);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic SFC in a render-fn host
@@ -1230,7 +1234,7 @@ describe('Pressable — a disabled control against real platform behaviour', () 
         // TAB order but a pointer press still focuses it, and the control deliberately stays in
         // hit-testing — so the consumer's fall-through key handlers are reachable on a control that
         // is supposed to be inert.
-        const {keydowns, keyups} = renderWithKeyHandlers(true);
+        const {keydowns, keyups} = await renderWithKeyHandlers(true);
 
         await userEvent.click(control(), {force: true});
         expect(document.activeElement).toBe(control()); // the reachability half
@@ -1242,7 +1246,7 @@ describe('Pressable — a disabled control against real platform behaviour', () 
     });
 
     it('POSITIVE CONTROL — the same handlers run on the ENABLED control', async () => {
-        const {keydowns, keyups} = renderWithKeyHandlers(false);
+        const {keydowns, keyups} = await renderWithKeyHandlers(false);
 
         await userEvent.click(control());
         expect(document.activeElement).toBe(control());
@@ -1266,10 +1270,10 @@ describe('Pressable — a disabled control against real platform behaviour', () 
  * happy-dom can show the event was left alone but not that the field still WORKS.
  */
 describe('Pressable — a disabled control and a focusable DESCENDANT', () => {
-    const renderDisabledRowWithChildren = (disabled: boolean) => {
+    const renderDisabledRowWithChildren = async (disabled: boolean) => {
         const keydowns = ref(0);
         const keyups = ref(0);
-        render(
+        await render(
             defineComponent(
                 () => () =>
                     h(
@@ -1294,7 +1298,7 @@ describe('Pressable — a disabled control and a focusable DESCENDANT', () => {
     };
 
     it("gives the consumer NOTHING while keeping the child's own keys — real pointer, real keyboard", async () => {
-        const {keydowns, keyups, filter} = renderDisabledRowWithChildren(true);
+        const {keydowns, keyups, filter} = await renderDisabledRowWithChildren(true);
 
         // Reachability, measured rather than argued: a real pointer press puts focus INSIDE a
         // disabled control, because the control stays in hit-testing and the child is focusable.
@@ -1313,7 +1317,7 @@ describe('Pressable — a disabled control and a focusable DESCENDANT', () => {
     });
 
     it('POSITIVE CONTROL — the same fixture, enabled, reaches the consumer AND types', async () => {
-        const {keydowns, keyups, filter} = renderDisabledRowWithChildren(false);
+        const {keydowns, keyups, filter} = await renderDisabledRowWithChildren(false);
 
         await userEvent.click(filter);
         await userEvent.keyboard('a b');
@@ -1329,8 +1333,8 @@ describe('Pressable — a disabled control and a focusable DESCENDANT', () => {
         element.dispatchEvent(new KeyboardEvent(type, {key: value, bubbles: true, cancelable: true}));
     };
 
-    it('withholds the consumer on a PROGRAMMATIC descendant key too — the leak is the handler, not the input pipeline', () => {
-        const {keydowns, keyups, filter} = renderDisabledRowWithChildren(true);
+    it('withholds the consumer on a PROGRAMMATIC descendant key too — the leak is the handler, not the input pipeline', async () => {
+        const {keydowns, keyups, filter} = await renderDisabledRowWithChildren(true);
 
         dispatchKey(filter, 'keydown', 'Enter');
         dispatchKey(filter, 'keyup', 'Enter');
@@ -1341,8 +1345,8 @@ describe('Pressable — a disabled control and a focusable DESCENDANT', () => {
         expect(keyups.value).toBe(0);
     });
 
-    it('POSITIVE CONTROL — the same dispatches reach the consumer while enabled', () => {
-        const {keydowns, keyups, filter} = renderDisabledRowWithChildren(false);
+    it('POSITIVE CONTROL — the same dispatches reach the consumer while enabled', async () => {
+        const {keydowns, keyups, filter} = await renderDisabledRowWithChildren(false);
 
         dispatchKey(filter, 'keydown', 'Enter');
         dispatchKey(filter, 'keyup', 'Enter');

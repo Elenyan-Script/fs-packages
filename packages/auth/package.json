@@ -1,13 +1,13 @@
 {
-    "name": "@script-development/fs-toast",
-    "version": "0.2.0",
-    "description": "Component-agnostic toast queue service for Vue 3 — FIFO management, you bring the component",
-    "homepage": "https://packages.script.nl/packages/toast",
+    "name": "@script-development/fs-auth",
+    "version": "0.1.0",
+    "description": "Sanctum SPA-cookie session store, safe-redirect guard and auth registrars for fs-http + fs-router",
+    "homepage": "https://packages.script.nl/packages/auth",
     "license": "MIT",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/script-development/fs-packages.git",
-        "directory": "packages/toast"
+        "directory": "packages/auth"
     },
     "files": [
         "dist"
@@ -41,16 +41,21 @@
         "test:mutation": "stryker run",
         "typecheck": "tsc --noEmit"
     },
-    "dependencies": {
-        "vue-component-type-helpers": "^3.3.11"
-    },
     "devDependencies": {
+        "@script-development/fs-http": "^0.6.0",
+        "@script-development/fs-router": "^0.3.0",
         "@vue/test-utils": "^2.5.0",
+        "axios": "^1.20.0",
+        "axios-mock-adapter": "^2.1.0",
         "happy-dom": "^20.14.3",
-        "vue": "^3.5.42"
+        "vue": "^3.5.42",
+        "vue-router": "^5.3.1"
     },
     "peerDependencies": {
-        "vue": "^3.5.42"
+        "@script-development/fs-http": "^0.6.0",
+        "@script-development/fs-router": "^0.3.0",
+        "vue": "^3.5.42",
+        "vue-router": "^5.3.1"
     },
     "engines": {
         "node": ">=24.0.0"

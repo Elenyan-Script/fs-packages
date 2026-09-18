@@ -12,26 +12,36 @@ export type GroupRow = {type: 'header'; text: string} | {type: 'boundary'} | {ty
  * (raw `groups`) and `GroupCombobox` (its filtered groups) so the boundary rule can never
  * drift between the two again.
  *
- * Only `options.length`, `text`, and `header` are read — never an option's contents — so the
- * caller keeps ownership of the option type. Option `index` runs across ALL groups in order,
- * matching the flat index every consumer (`pointer`, `isSelected`, the `#option` slot) keys on.
+ * Only an option's PRESENCE, plus `text` and `header`, are read — never an option's contents —
+ * so the caller keeps ownership of the option type. Option `index` runs across ALL groups in
+ * order, matching the flat index every consumer (`pointer`, `isSelected`, the `#option` slot)
+ * keys on.
  *
- * A group with no options emits NOTHING: an empty group whose header rendered would confuse
- * users. (`GroupCombobox` pre-filters empty groups, so that guard is a no-op on its path.)
+ * Both loops use `forEach`, which skips array HOLES exactly as the parents' `groups.flatMap((g)
+ * => g.options)` does — so the option-row count is definitionally identical to the flattened
+ * option list, and a sparse `T[]` can never emit a row index that `flatOptions` lacks (which
+ * would throw when a consumer dereferences `flatOptions[index]`). `for...of` would visit holes
+ * as `undefined` and reintroduce that divergence.
+ *
+ * A group with no options — none, or all holes — emits NOTHING: an empty group whose header
+ * rendered would confuse users. (`GroupCombobox` pre-filters empty groups, so that guard is a
+ * no-op on its path.)
  */
 export const buildGroupRows = (
     groups: readonly {options: readonly unknown[]; text: string; header?: boolean}[],
 ): GroupRow[] => {
     const rows: GroupRow[] = [];
     let index = 0;
-    for (const group of groups) {
-        if (!group.options.length) continue;
+    groups.forEach((group) => {
+        const optionRows: GroupRow[] = [];
+        group.options.forEach(() => {
+            optionRows.push({type: 'option', index: index++});
+        });
+        if (!optionRows.length) return;
         // A named group emits its header; a headerless group emits a boundary so its options
         // never fold into the preceding group's role="group".
         rows.push(group.header !== false ? {type: 'header', text: group.text} : {type: 'boundary'});
-        for (const _ of group.options) {
-            rows.push({type: 'option', index: index++});
-        }
-    }
+        rows.push(...optionRows);
+    });
     return rows;
 };

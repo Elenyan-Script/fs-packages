@@ -1,6 +1,6 @@
 {
     "name": "@script-development/fs-form",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "Reactive form-submit helpers: double-submit guard plus 422 validation-error binding for fs-http",
     "homepage": "https://packages.script.nl/packages/form",
     "license": "MIT",
@@ -45,7 +45,7 @@
         "@script-development/fs-http": "^0.5.0 || ^0.6.0",
         "@vue/test-utils": "^2.5.0",
         "axios": "^1.20.0",
-        "happy-dom": "^20.14.0",
+        "happy-dom": "^20.14.3",
         "vue": "^3.5.42"
     },
     "peerDependencies": {
